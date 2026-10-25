@@ -1015,7 +1015,7 @@ tr:last-child td { border-bottom: 0; }
             }
 
             const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-            addGlLine(doc, line, accountKey, accountName, accountType, debit, credit, desc);
+            addGlLine(doc, accountKey, accountName, accountType, debit, credit, desc);
           }
         } else if (type.key === 'inter-account-transfer') {
           // Inter Account Transfer has PaidFrom (credit), ReceivedIn (debit), CreditAmount/DebitAmount
@@ -1033,7 +1033,7 @@ tr:last-child td { border-bottom: 0; }
               }
               if (!accountKey) accountName = paidFromId || 'Paid From Account';
               const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-              addGlLine(doc, null, accountKey, accountName, accountType, 0, amount, desc);
+              addGlLine(doc, accountKey, accountName, accountType, 0, amount, desc);
             }
 
             // ReceivedIn account: DEBIT (money entering)
@@ -1045,7 +1045,7 @@ tr:last-child td { border-bottom: 0; }
               }
               if (!accountKey) accountName = receivedInId || 'Received In Account';
               const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-              addGlLine(doc, null, accountKey, accountName, accountType, amount, 0, desc);
+              addGlLine(doc, accountKey, accountName, accountType, amount, 0, desc);
             }
           }
         } else if (type.key === 'journal-entry') {
@@ -1065,7 +1065,7 @@ tr:last-child td { border-bottom: 0; }
             if (!accountKey) accountName = accountId || 'Unknown Account';
 
             const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-            addGlLine(doc, line, accountKey, accountName, accountType, debit, credit, desc);
+            addGlLine(doc, accountKey, accountName, accountType, debit, credit, desc);
           }
         } else {
           // Sales Invoice, Purchase Invoice, Credit Note, Debit Note - have Lines with Debit/Credit
@@ -1084,7 +1084,7 @@ tr:last-child td { border-bottom: 0; }
             if (!accountKey) accountName = accountId || 'Unknown Account';
 
             const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-            addGlLine(doc, line, accountKey, accountName, accountType, debit, credit, desc);
+            addGlLine(doc, accountKey, accountName, accountType, debit, credit, desc);
           }
         }
       }
@@ -1119,7 +1119,7 @@ tr:last-child td { border-bottom: 0; }
         if (!accountKey) accountName = 'Late Payment Fee Income';
 
         const desc = fee.date + ' - ' + fee.typeLabel + ' ' + (fee.reference || fee.key.slice(0, 8));
-        addGlLine(fee, line, accountKey, accountName, accountType, amount, 0, desc);
+        addGlLine(fee, accountKey, accountName, accountType, amount, 0, desc);
       }
     }
 
