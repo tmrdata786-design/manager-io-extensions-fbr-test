@@ -1414,7 +1414,7 @@ tr:last-child td { border-bottom: 0; }
     const root = $('#modal-root');
     const width = options && options.small ? ' small' : '';
     root.innerHTML = '<div class="modal-backdrop open"><div class="modal' + width + '">' +
-      '<div class="modal-head"><h2>' + esc(title) + '</h2><button class="x" data-action="close-modal" aria-label="Close">├ù</button></div>' +
+      '<div class="modal-head"><h2>' + esc(title) + '</h2><button class="x" data-action="close-modal" aria-label="Close">\u00D7</button></div>' +
       '<div class="modal-body">' + body + '</div>' +
       '<div class="modal-foot">' + (actions || []).map((action) =>
         '<button class="btn ' + esc(action.className || 'btn-outline') + '" data-action="' + esc(action.action || '') + '"' + (action.disabled ? ' disabled' : '') + '>' + esc(action.label) + '</button>'
@@ -1517,7 +1517,7 @@ tr:last-child td { border-bottom: 0; }
 
   function checkList(checks) {
     return '<div class="checks">' + (checks || []).map((check) =>
-      '<div class="check"><div class="check-icon ' + esc(check.status) + '">' + (check.status === 'pass' ? 'Γ£ô' : check.status === 'fail' ? '!' : 'i') + '</div>' +
+      '<div class="check"><div class="check-icon ' + esc(check.status) + '">' + (check.status === 'pass' ? '\u2713' : check.status === 'fail' ? '!' : 'i') + '</div>' +
       '<div><div class="check-title">' + esc(check.label) + '</div><div class="check-detail">' + esc(check.detail) + '</div></div>' + statusPill(check.status) + '</div>'
     ).join('') + '</div>';
   }
@@ -1537,7 +1537,7 @@ tr:last-child td { border-bottom: 0; }
     const bsDiff = result.balanceSheet.totals.difference;
     const warningCount = result.warnings.length;
     view.innerHTML = renderRangeWarning() +
-      '<div class="section-head"><h2>Dashboard</h2><span class="muted small">' + esc(State.businessName) + ' ┬╖ ' + esc(options.fbrStartDate) + ' to ' + esc(options.periodTo) + '</span><div class="spacer"></div><span class="pill ' + (result.ok ? 'ok' : 'fail') + '">' + (result.ok ? 'Controls pass' : 'Review controls') + '</span></div>' +
+      '<div class="section-head"><h2>Dashboard</h2><span class="muted small">' + esc(State.businessName) + ' \u00B7 ' + esc(options.fbrStartDate) + ' to ' + esc(options.periodTo) + '</span><div class="spacer"></div><span class="pill ' + (result.ok ? 'ok' : 'fail') + '">' + (result.ok ? 'Controls pass' : 'Review controls') + '</span></div>' +
       '<div class="grid cols-4">' +
       kpi('Tagged documents', String(includedDocs), 'with posted GL rows', '') +
       kpi('GL rows included', String(result.included.rows.length), 'debit ' + money(result.included.debit) + ' / credit ' + money(result.included.credit), '') +
@@ -1564,7 +1564,7 @@ tr:last-child td { border-bottom: 0; }
 
   function tableSection(title, rows, totalLabel, total, options) {
     const opts = options || {};
-    if (!rows.length) return '<tr class="tr-sub"><td colspan="5">' + esc(title) + ' ΓÇö no activity</td></tr>';
+    if (!rows.length) return '<tr class="tr-sub"><td colspan="5">' + esc(title) + ' \u2014 no activity</td></tr>';
     return '<tr class="tr-sub"><td colspan="5">' + esc(title) + '</td></tr>' +
       rows.map((row) => '<tr' + (row.synthetic ? ' class="tr-synthetic"' : '') + '><td class="mono">' + esc(row.code || '') + '</td><td class="account-name">' + esc(row.nameWithCode || row.name || '') + (row.synthetic ? ' <span class="pill brand">synthetic</span>' : '') + '</td>' +
         '<td class="num">' + money(row.debit || 0) + '</td><td class="num">' + money(row.credit || 0) + '</td><td class="num">' + money(opts.amount ? row.amount : row.net) + '</td></tr>').join('') +
@@ -1753,13 +1753,13 @@ tr:last-child td { border-bottom: 0; }
       '<div class="grid cols-2">' +
       '<div class="card"><h3>FBR fields</h3><div class="table-wrap"><table><tbody>' +
       '<tr><td>FBR checkbox</td><td class="mono small">' + esc(State.fbrField ? State.fbrField.key : 'Not found') + '</td></tr>' +
-      '<tr><td>FBR placement</td><td>' + (placement ? placement.placed.length + ' type(s)' : 'ΓÇö') + '</td></tr>' +
+      '<tr><td>FBR placement</td><td>' + (placement ? placement.placed.length + ' type(s)' : '\u2014') + '</td></tr>' +
       '<tr><td>FBR Adjustment</td><td class="mono small">' + esc(State.adjustmentField ? State.adjustmentField.key : 'Not found') + '</td></tr>' +
-      '<tr><td>Adjustment field type</td><td>' + (State.adjustmentField ? 'Paragraph text / Large' : 'ΓÇö') + '</td></tr>' +
+      '<tr><td>Adjustment field type</td><td>' + (State.adjustmentField ? 'Paragraph text / Large' : '\u2014') + '</td></tr>' +
       '</tbody></table></div></div>' +
       '<div class="card"><h3>GL report</h3><div class="table-wrap"><table><tbody>' +
       '<tr><td>Definition key</td><td class="mono small">' + esc(State.glReportKey || 'Not loaded') + '</td></tr>' +
-      '<tr><td>Loaded range</td><td>' + (State.glRange ? esc(State.glRange.from + ' to ' + State.glRange.to) : 'ΓÇö') + '</td></tr>' +
+      '<tr><td>Loaded range</td><td>' + (State.glRange ? esc(State.glRange.from + ' to ' + State.glRange.to) : '\u2014') + '</td></tr>' +
       '<tr><td>Rows</td><td>' + (State.glModel && State.glModel.rows ? State.glModel.rows.length : 0) + '</td></tr>' +
       '</tbody></table></div><div class="actions" style="margin-top:12px"><button class="btn btn-outline" data-action="refresh-gl">Prepare / refresh</button></div></div>' +
       '</div>' +
@@ -1793,7 +1793,7 @@ tr:last-child td { border-bottom: 0; }
     const pl = accounts.filter((account) => account.type === 'PL');
     const bs = accounts.filter((account) => account.type === 'BS');
     function option(account) {
-      return '<option value="' + esc(account.key) + '"' + (String(selected || '').toLowerCase() === String(account.key).toLowerCase() ? ' selected' : '') + '>' + esc((account.code ? account.code + ' ┬╖ ' : '') + (account.name || account.nameWithCode || '')) + '</option>';
+      return '<option value="' + esc(account.key) + '"' + (String(selected || '').toLowerCase() === String(account.key).toLowerCase() ? ' selected' : '') + '>' + esc((account.code ? account.code + ' \u00B7 ' : '') + (account.name || account.nameWithCode || '')) + '</option>';
     }
     let html = '<option value="">Select account...</option>';
     if (!onlyBS && pl.length) html += '<optgroup label="Profit &amp; Loss">' + pl.map(option).join('') + '</optgroup>';
