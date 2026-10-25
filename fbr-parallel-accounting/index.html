@@ -478,6 +478,12 @@ tr:last-child td { border-bottom: 0; }
         return await directFetch(method, path, body);
       } catch (err) {
         if (options.noFallback) throw err;
+        // Fall back to bridge only on network errors (TypeError), not HTTP 4xx/5xx
+        if (err && err.name === 'TypeError') {
+          // network failure; fall through to bridge
+        } else {
+          throw err;
+        }
       }
     }
     return postMessageWithResponse({ type: 'api-request', method: method, path: path, body: body }, options.timeoutMs || 60000);
