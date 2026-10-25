@@ -1482,7 +1482,6 @@ tr:last-child td { border-bottom: 0; }
     };
     const render = views[State.tab] || renderDashboard;
     render();
-    bindView();
   }
 
   function renderWelcome() {
@@ -2144,7 +2143,6 @@ tr:last-child td { border-bottom: 0; }
 
   document.addEventListener('change', (event) => {
     if (event.target && event.target.id === 'editor-type') {
-      State.editor.type = event.target.value;
       renderEditorLines();
     }
   });
