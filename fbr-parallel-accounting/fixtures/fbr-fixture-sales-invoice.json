@@ -1,0 +1,18 @@
+{
+  "documentType": "sales-invoice",
+  "key": "01a17257-07f9-7522-95ac-b116a384ed62",
+  "fbrChecked": true,
+  "customFields2": {
+    "Booleans": {
+      "01a16857-7f54-7da0-a97e-2c29ec11bf7e": true
+    }
+  },
+  "lines": [
+    {
+      "Item": "01a1026f...",
+      "Qty": 10,
+      "SalesUnitPrice": 2000
+    }
+  ],
+  "note": "Form lacks Debit/Credit GL lines; unsupported for full double-entry ledger"
+}
