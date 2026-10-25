@@ -901,7 +901,7 @@ tr:last-child td { border-bottom: 0; }
   }
 
   async function buildGlModelFromDocuments(from, to) {
-    if (!State.docIndex || !State.accountIndex) return { rows: [] };
+    if (!State.docIndex || !State.accountIndex) return { model: { rows: [] }, warnings: [] };
     const docIndex = State.docIndex;
     const accountIndex = State.accountIndex;
     const accountGroups = new Map();
