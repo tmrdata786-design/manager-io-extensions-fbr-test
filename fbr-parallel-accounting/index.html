@@ -301,6 +301,27 @@ tr:last-child td { border-bottom: 0; }
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="./engine.js"></script>
 <script>
+// Task 7: handshake / standalone detection — must run before/after engine load
+(function(){
+  window.__managerContextBuffer = null;
+  window.__managerProbeSent = false;
+  function bufHandler(e){
+    if (e.data && e.data.type === 'manager-context' && e.data.payload){
+      window.__managerContextBuffer = e.data.payload;
+      if (e.origin && e.origin !== 'null') window.__managerTargetOrigin = e.origin;
+    }
+  }
+  window.addEventListener('message', bufHandler);
+  if (window.parent === window) {
+    // Standalone; diagnostic in loadBaseData will show message
+  } else if (!window.__managerContextBuffer && !window.__managerProbeSent) {
+    window.__managerProbeSent = true;
+    const origin = (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) || (document.referrer ? new URL(document.referrer).origin : null) || '*';
+    window.parent.postMessage({ type: 'api-request', method: 'GET', path: '/api2/business-details', body: null, requestId: 'probe-1' }, origin);
+  }
+})();
+</script>
+<script>
 (function () {
   'use strict';
 
@@ -425,6 +446,8 @@ tr:last-child td { border-bottom: 0; }
     assertSafePath(path);
     const ctx = State.context;
     if (!ctx || !ctx.apiEndpoint || !ctx.apiAccessToken) throw new Error('Manager context is not available');
+    const endpointOrigin = new URL(ctx.apiEndpoint).origin;
+    if (State.origin && endpointOrigin && endpointOrigin !== State.origin) throw new Error('Manager endpoint origin mismatch');
     const base = String(ctx.apiEndpoint).replace(/\/+$/, '');
     const url = base + (path.startsWith('/') ? path : '/' + path);
     const opts = {
@@ -2086,9 +2109,11 @@ tr:last-child td { border-bottom: 0; }
   }
 
   window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) return;
     if (event.data && event.data.type === 'manager-context' && event.data.payload) {
       const origin = event.origin && event.origin !== 'null' ? event.origin : null;
-      if (managerOrigin && origin !== managerOrigin) return;
+      if (managerOrigin && origin && origin !== managerOrigin) return;
+      if (State.origin && origin && origin !== State.origin) return;
       managerOrigin = origin;
       State.origin = origin;
       State.context = event.data.payload;
