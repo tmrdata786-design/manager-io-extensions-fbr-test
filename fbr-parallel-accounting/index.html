@@ -973,11 +973,9 @@ tr:last-child td { border-bottom: 0; }
 
         // Check FBR checkbox on the form (authoritative source)
         const formFbr = E.readCheckbox(form, State.fbrField.key);
-        if (!formFbr) continue; // Skip if not FBR-tagged on the form
-
-        // Update docIndex with authoritative FBR value so computeReports includes this document
+        // Update docIndex with authoritative FBR value (true OR false)
         const docInIndex = docIndex.byKey.get(doc.key);
-        if (docInIndex) docInIndex.fbr = true;
+        if (docInIndex) docInIndex.fbr = !!formFbr;
 
         // Process based on document type
         if (type.key === 'receipt' || type.key === 'payment' || type.key === 'expense-claim') {
