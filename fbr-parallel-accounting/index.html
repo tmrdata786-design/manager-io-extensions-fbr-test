@@ -1,0 +1,2157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FBR Parallel Accounting</title>
+<style>
+:root {
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --ink: #17212b;
+  --muted: #667085;
+  --line: #dde3ea;
+  --brand: #0f766e;
+  --brand-2: #115e59;
+  --brand-soft: #e6fffb;
+  --accent: #b45309;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --warn: #b54708;
+  --warn-soft: #fffaeb;
+  --ok: #067647;
+  --ok-soft: #ecfdf3;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+  --radius: 12px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+a { color: var(--brand); }
+.hidden { display: none !important; }
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px 20px;
+  background: #0b2b2a;
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,.14);
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 250px; }
+.brand-mark {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: grid; place-items: center;
+  background: linear-gradient(135deg, #2dd4bf, #0f766e);
+  font-weight: 800; letter-spacing: .5px;
+}
+.brand-title { font-size: 15px; font-weight: 700; }
+.brand-sub { font-size: 11px; color: #a7f3d0; letter-spacing: .35px; text-transform: uppercase; }
+.conn { display: flex; align-items: center; gap: 8px; color: #d1fae5; font-size: 12px; margin-left: auto; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #fbbf24; box-shadow: 0 0 0 3px rgba(251,191,36,.16); }
+.dot.ok { background: #34d399; box-shadow: 0 0 0 3px rgba(52,211,153,.18); }
+.dot.bad { background: #f87171; box-shadow: 0 0 0 3px rgba(248,113,113,.18); }
+.top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn {
+  border: 1px solid transparent; border-radius: 9px;
+  padding: 8px 12px; font-weight: 600; font-size: 13px;
+  background: #fff; color: var(--ink);
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.btn:hover { filter: brightness(.98); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: #14b8a6; color: #052e2b; }
+.btn-dark { background: #134e4a; color: #fff; }
+.btn-ghost { background: rgba(255,255,255,.08); color: #fff; border-color: rgba(255,255,255,.18); }
+.btn-outline { background: #fff; border-color: var(--line); color: var(--ink); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-sm { padding: 5px 9px; font-size: 12px; border-radius: 7px; }
+.layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: calc(100vh - 61px); }
+.sidebar {
+  background: #fff; border-right: 1px solid var(--line);
+  padding: 16px 12px; position: sticky; top: 61px; align-self: start;
+  height: calc(100vh - 61px); overflow: auto;
+}
+.nav-label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 8px 10px 6px; font-weight: 700; }
+.nav-btn {
+  width: 100%; text-align: left; border: 0; background: transparent;
+  padding: 9px 10px; border-radius: 8px; color: #344054; font-weight: 600;
+  display: flex; align-items: center; gap: 9px; margin: 1px 0;
+}
+.nav-btn:hover { background: #f2f4f7; }
+.nav-btn.active { background: var(--brand-soft); color: var(--brand-2); }
+.nav-badge { margin-left: auto; background: #eef2f6; color: #475467; border-radius: 999px; padding: 1px 7px; font-size: 11px; }
+.nav-btn.active .nav-badge { background: #ccfbf1; color: #0f766e; }
+.main { padding: 20px; min-width: 0; }
+.rangebar {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px 14px;
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 16px;
+}
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 140px; }
+.field label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.field input, .field select, .field textarea {
+  border: 1px solid #cfd6df; border-radius: 8px; padding: 8px 9px; background: #fff; color: var(--ink);
+  min-width: 0;
+}
+.field textarea { resize: vertical; min-height: 64px; }
+.rangebar .spacer { flex: 1; }
+.banner {
+  border: 1px solid var(--line); background: #fff; border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 16px; box-shadow: var(--shadow);
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.banner.warn { background: var(--warn-soft); border-color: #fedf89; }
+.banner.danger { background: var(--danger-soft); border-color: #fecdca; }
+.banner.ok { background: var(--ok-soft); border-color: #abefc6; }
+.banner-icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: #f2f4f7; font-weight: 800; }
+.banner h3 { margin: 0 0 3px; font-size: 14px; }
+.banner p { margin: 0; color: var(--muted); font-size: 13px; }
+.banner .banner-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.grid { display: grid; gap: 14px; }
+.grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.card {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px; min-width: 0;
+}
+.card h2 { margin: 0 0 4px; font-size: 16px; }
+.card h3 { margin: 0 0 10px; font-size: 14px; }
+.card .sub { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+.kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.kpi .value { font-size: 24px; font-weight: 800; margin-top: 4px; letter-spacing: -.02em; }
+.kpi .note { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.kpi.good .value { color: var(--ok); }
+.kpi.bad .value { color: var(--danger); }
+.kpi.warn .value { color: var(--warn); }
+.section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.section-head h2 { margin: 0; }
+.section-head .spacer { flex: 1; }
+.table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; min-width: 680px; }
+th, td { padding: 8px 10px; border-bottom: 1px solid #edf0f3; text-align: left; vertical-align: top; }
+th { background: #f8fafc; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #475467; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.tiny { font-size: 11px; }
+.tr-total td { font-weight: 800; background: #f8fafc; border-top: 2px solid #d0d5dd; }
+.tr-sub td { font-weight: 700; background: #fcfcfd; }
+.tr-synthetic td { font-style: italic; color: #475467; }
+.account-name { min-width: 260px; }
+.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.fail { background: var(--danger-soft); color: var(--danger); }
+.pill.neutral { background: #f2f4f7; color: #475467; }
+.pill.brand { background: var(--brand-soft); color: var(--brand-2); }
+.checks { display: grid; gap: 8px; }
+.check { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+.check-icon { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+.check-icon.pass { background: var(--ok-soft); color: var(--ok); }
+.check-icon.warn { background: var(--warn-soft); color: var(--warn); }
+.check-icon.fail { background: var(--danger-soft); color: var(--danger); }
+.check-title { font-weight: 700; font-size: 13px; }
+.check-detail { color: var(--muted); font-size: 12px; }
+.actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.empty { padding: 26px 18px; text-align: center; color: var(--muted); }
+.empty strong { display: block; color: var(--ink); margin-bottom: 4px; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tab-btn { border: 1px solid var(--line); background: #fff; color: #344054; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.tab-btn.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(9, 20, 28, .55); z-index: 100; display: none; align-items: flex-start; justify-content: center; padding: 26px 16px; overflow: auto; }
+.modal-backdrop.open { display: flex; }
+.modal { background: #fff; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.28); width: min(880px, 100%); }
+.modal.small { width: min(560px, 100%); }
+.modal-head { padding: 16px 18px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: center; }
+.modal-head h2 { margin: 0; font-size: 17px; }
+.modal-head .x { margin-left: auto; border: 0; background: #f2f4f7; width: 30px; height: 30px; border-radius: 8px; font-size: 18px; line-height: 1; }
+.modal-body { padding: 18px; }
+.modal-foot { padding: 14px 18px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.busy { position: fixed; inset: 0; background: rgba(244,246,248,.82); z-index: 200; display: none; place-items: center; }
+.busy.open { display: grid; }
+.busy-box { background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 20px 24px; min-width: 300px; text-align: center; }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #d1fae5; border-top-color: var(--brand); margin: 0 auto 12px; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.busy-text { font-weight: 700; }
+.busy-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.toast-wrap { position: fixed; right: 18px; bottom: 18px; z-index: 300; display: grid; gap: 8px; max-width: 380px; }
+.toast { background: #101828; color: #fff; border-radius: 10px; padding: 10px 13px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.22); }
+.toast.ok { background: #065f46; }
+.toast.warn { background: #92400e; }
+.toast.bad { background: #991b1b; }
+.readme { max-width: 860px; }
+.readme h3 { margin: 18px 0 6px; }
+.readme p, .readme li { color: #344054; }
+.readme code { background: #f2f4f7; padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+.editor-lines td { padding: 6px; }
+.editor-lines input, .editor-lines select { width: 100%; padding: 6px 7px; border: 1px solid #cfd6df; border-radius: 7px; }
+.editor-lines .amount { text-align: right; }
+.line-total { display: flex; justify-content: flex-end; gap: 18px; padding: 10px 0 0; font-weight: 700; }
+.line-total .bad { color: var(--danger); }
+.line-total .good { color: var(--ok); }
+.help-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.help-item { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.help-item strong { display: block; margin-bottom: 4px; }
+.help-item span { color: var(--muted); font-size: 12px; }
+.list { margin: 0; padding-left: 18px; color: #344054; }
+.list li { margin: 3px 0; }
+.code-box { background: #0b2b2a; color: #ccfbf1; border-radius: 10px; padding: 12px; overflow: auto; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+@media (max-width: 980px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); display: flex; gap: 6px; overflow-x: auto; padding: 10px; }
+  .nav-label { display: none; }
+  .nav-btn { width: auto; white-space: nowrap; }
+  .split { grid-template-columns: 1fr; }
+  .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .brand { min-width: 0; }
+  .brand-text { display: none; }
+  .conn { display: none; }
+  .grid.cols-2, .grid.cols-3, .grid.cols-4 { grid-template-columns: 1fr; }
+  .help-grid { grid-template-columns: 1fr; }
+  .main { padding: 12px; }
+  .topbar { padding: 10px 12px; }
+}
+@media print {
+  .topbar, .sidebar, .rangebar, .top-actions, .banner .banner-actions, .actions, .no-print { display: none !important; }
+  .layout { display: block; }
+  .main { padding: 0; }
+  .card { box-shadow: none; border: 0; padding: 0; }
+  .table-wrap { border: 1px solid #999; overflow: visible; }
+  table { min-width: 0; }
+  body { background: #fff; }
+  .print-title { display: block !important; margin-bottom: 12px; }
+}
+.print-title { display: none; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">FBR</div>
+    <div class="brand-text">
+      <div class="brand-title">FBR Parallel Accounting</div>
+      <div class="brand-sub">Selected-transaction reports</div>
+    </div>
+  </div>
+  <div class="conn"><span id="conn-dot" class="dot"></span><span id="conn-text">Waiting for Manager...</span></div>
+  <div class="top-actions">
+    <button class="btn btn-ghost" data-action="help">Help</button>
+    <button class="btn btn-ghost" data-action="print">Print</button>
+    <button class="btn btn-primary" data-action="load-data">Load FBR data</button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="nav-label">Reports</div>
+    <button class="nav-btn active" data-tab="dashboard"><span>Dashboard</span></button>
+    <button class="nav-btn" data-tab="trial-balance"><span>Trial Balance</span></button>
+    <button class="nav-btn" data-tab="profit-loss"><span>Profit &amp; Loss</span></button>
+    <button class="nav-btn" data-tab="balance-sheet"><span>Balance Sheet</span></button>
+    <div class="nav-label">Ledger</div>
+    <button class="nav-btn" data-tab="documents"><span>Documents</span><span id="badge-docs" class="nav-badge">0</span></button>
+    <button class="nav-btn" data-tab="adjustments"><span>Adjustments</span><span id="badge-adj" class="nav-badge">0</span></button>
+    <button class="nav-btn" data-tab="reconciliation"><span>Reconciliation</span></button>
+    <div class="nav-label">Setup</div>
+    <button class="nav-btn" data-tab="settings"><span>Settings</span></button>
+  </aside>
+  <main class="main">
+    <div class="rangebar no-print">
+      <div class="field">
+        <label for="fbr-start">FBR start</label>
+        <input id="fbr-start" type="date">
+      </div>
+      <div class="field">
+        <label for="period-from">Period from</label>
+        <input id="period-from" type="date">
+      </div>
+      <div class="field">
+        <label for="period-to">Period to</label>
+        <input id="period-to" type="date">
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-outline" data-action="refresh-gl">Prepare / refresh GL report</button>
+      <button class="btn btn-primary" data-action="load-data">Load</button>
+    </div>
+    <div id="view"></div>
+  </main>
+</div>
+<div id="busy" class="busy">
+  <div class="busy-box">
+    <div class="spinner"></div>
+    <div class="busy-text" id="busy-text">Working...</div>
+    <div class="busy-sub" id="busy-sub">Talking to Manager.io</div>
+  </div>
+</div>
+<div id="modal-root"></div>
+<div id="toast-wrap" class="toast-wrap"></div>
+<script src="./engine.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const E = window.FbrEngine;
+  if (!E) {
+    document.body.innerHTML = '<div style="padding:40px;font-family:sans-serif"><h2>Engine not loaded</h2><p>Place <code>engine.js</code> next to <code>index.html</code>.</p></div>';
+    return;
+  }
+
+  const $ = (selector, root) => (root || document).querySelector(selector);
+  const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
+  const esc = (value) => String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const money = (value) => E.money(value);
+  const fmtDate = (value) => value ? String(value).slice(0, 10) : '';
+  const today = () => E.todayISO();
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+
+  const State = {
+    context: null,
+    origin: null,
+    business: null,
+    businessName: 'Manager business',
+    baseCurrencyKey: null,
+    fbrField: null,
+    adjustmentField: null,
+    placement: null,
+    accountIndex: null,
+    partyIndex: new Map(),
+    folders: [],
+    config: null,
+    adjustments: [],
+    invalidAdjustments: [],
+    docIndex: null,
+    glModel: null,
+    glReportKey: null,
+    glRange: null,
+    result: null,
+    tab: 'dashboard',
+    loaded: false,
+    loading: false,
+    error: null,
+    warnings: [],
+    editor: null,
+    backupPreview: null,
+    pendingConfig: null
+  };
+
+  let managerOrigin = null;
+
+  function setConnection(kind, text) {
+    const dot = $('#conn-dot');
+    const label = $('#conn-text');
+    if (dot) dot.className = 'dot ' + kind;
+    if (label) label.textContent = text;
+  }
+
+  function setBusy(open, text, sub) {
+    const busy = $('#busy');
+    if (!busy) return;
+    busy.classList.toggle('open', !!open);
+    if (text) $('#busy-text').textContent = text;
+    if (sub) $('#busy-sub').textContent = sub;
+  }
+
+  function toast(message, kind) {
+    const wrap = $('#toast-wrap');
+    if (!wrap) return;
+    const node = document.createElement('div');
+    node.className = 'toast ' + (kind || '');
+    node.textContent = message;
+    wrap.appendChild(node);
+    setTimeout(() => node.remove(), 5200);
+  }
+
+  function assertSafePath(path) {
+    if (typeof path !== 'string') throw new Error('Invalid API path');
+    if (path.length > 4096) throw new Error('API path is too long');
+    if (path.includes('..')) throw new Error('Parent path segments are not allowed');
+    const clean = path.split('?')[0];
+    if (!/^\/api[24]\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+$/.test(clean)) throw new Error('Only /api2/ or /api4/ paths are allowed');
+  }
+
+  function managerTargetOrigin() {
+    return managerOrigin || '*';
+  }
+
+  function postMessageWithResponse(message, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      assertSafePath(message && message.path);
+      const requestId = crypto.randomUUID();
+      const timer = setTimeout(() => {
+        window.removeEventListener('message', handler);
+        reject(new Error('Manager did not answer within ' + Math.round((timeoutMs || 30000) / 1000) + ' seconds'));
+      }, timeoutMs || 30000);
+      function handler(event) {
+        if (managerOrigin && event.origin !== managerOrigin) return;
+        if (event.source !== window.parent) return;
+        if (event.data && typeof event.data.type === 'string' && event.data.type.endsWith('-response') && event.data.requestId === requestId) {
+          clearTimeout(timer);
+          window.removeEventListener('message', handler);
+          if (event.data.error) {
+            reject(new Error(event.data.error));
+            return;
+          }
+          const origin = event.origin && event.origin !== 'null' ? event.origin : null;
+          if (!managerOrigin && origin) {
+            managerOrigin = origin;
+            State.origin = origin;
+            setConnection('ok', 'Connected: Manager');
+            if (!State.context) State.context = { apiEndpoint: '', apiAccessToken: '' };
+            if (!State.loaded && !State.loading && !State.probing) loadBaseData();
+          }
+          resolve(event.data.body);
+        }
+      }
+      window.addEventListener('message', handler);
+      window.parent.postMessage(Object.assign({}, message, { requestId: requestId }), managerTargetOrigin());
+    });
+  }
+
+  async function directFetch(method, path, body) {
+    assertSafePath(path);
+    const ctx = State.context;
+    if (!ctx || !ctx.apiEndpoint || !ctx.apiAccessToken) throw new Error('Manager context is not available');
+    const base = String(ctx.apiEndpoint).replace(/\/+$/, '');
+    const url = base + (path.startsWith('/') ? path : '/' + path);
+    const opts = {
+      method: method,
+      headers: {
+        'Authorization': 'Bearer ' + ctx.apiAccessToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    };
+    if (body !== undefined && body !== null) opts.body = typeof body === 'string' ? body : JSON.stringify(body);
+    const response = await fetch(url, opts);
+    const text = await response.text();
+    if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (text || '(empty response)').slice(0, 300));
+    if (!text || !text.trim()) return null;
+    try { return JSON.parse(text); } catch (err) { 
+      // Return raw text for non-JSON responses (e.g., HTML error pages)
+      console.warn('Non-JSON response from ' + path + ': ' + text.slice(0, 200));
+      return text; 
+    }
+  }
+
+  async function apiCall(method, path, body, opts) {
+    const options = opts || {};
+    assertSafePath(path);
+    if (State.context && State.context.apiEndpoint && State.context.apiAccessToken && options.direct !== false) {
+      try {
+        return await directFetch(method, path, body);
+      } catch (err) {
+        if (options.noFallback) throw err;
+      }
+    }
+    return postMessageWithResponse({ type: 'api-request', method: method, path: path, body: body }, options.timeoutMs || 60000);
+  }
+
+  function isNotFound(error) {
+    const text = String(error && error.message || error || '');
+    return /HTTP 404|\b404\b|not found/i.test(text);
+  }
+
+  function isForbidden(error) {
+    const text = String(error && error.message || error || '');
+    return /HTTP 401|HTTP 403|\b401\b|\b403\b|unauthori[sz]ed|forbidden/i.test(text);
+  }
+
+  function extractItems(data) {
+    if (Array.isArray(data)) return data;
+    if (!data || typeof data !== 'object') return [];
+    if (Array.isArray(data.items)) return data.items;
+    if (Array.isArray(data.data)) return data.data;
+    if (Array.isArray(data.rows)) return data.rows;
+    // Handle nested wrappers: { customFields: [...] }, { results: [...] }, etc.
+    for (const k of Object.keys(data)) {
+      if (Array.isArray(data[k]) && data[k].length > 0 && typeof data[k][0] === 'object') {
+        return data[k];
+      }
+    }
+    return [];
+  }
+
+  function appendQuery(path, key, value) {
+    return path + (path.includes('?') ? '&' : '?') + encodeURIComponent(key) + '=' + encodeURIComponent(value);
+  }
+
+  async function fetchAllPages(endpoint, options) {
+    const opts = options || {};
+    const pageSize = opts.pageSize || 2000;
+    let base = endpoint.startsWith('/api2/') || endpoint.startsWith('/api2/') ? endpoint : '/api2/' + endpoint;
+    const collected = [];
+    const seen = new Set();
+    let skip = 0;
+    let token = null;
+    let pages = 0;
+    let lastFirstKey = null;
+
+    while (pages < 100) {
+      let path = appendQuery(base, 'PageSize', pageSize);
+      if (token) path = appendQuery(path, 'next_page_token', token);
+      else if (skip) path = appendQuery(path, 'Skip', skip);
+      const data = await apiCall('GET', path, null, { timeoutMs: 180000 });
+      const items = extractItems(data);
+      if (!items.length) break;
+      const firstKey = E.itemKey(items[0]) || JSON.stringify(items[0]).slice(0, 80);
+      if (firstKey && firstKey === lastFirstKey) break;
+      lastFirstKey = firstKey;
+      for (const item of items) {
+        const key = E.itemKey(item);
+        if (key) {
+          const normalized = String(key).toLowerCase();
+          if (seen.has(normalized)) continue;
+          seen.add(normalized);
+        }
+        collected.push(item);
+      }
+      let next = data && (data.next_page_token || data.nextPageToken || (data._links && data._links.next && data._links.next.href));
+      if (next) {
+        if (String(next).startsWith('http')) {
+          const parsed = new URL(next);
+          next = parsed.pathname + parsed.search;
+        }
+        token = next;
+      } else if (items.length >= pageSize) {
+        skip += pageSize;
+        token = null;
+      } else {
+        break;
+      }
+      pages += 1;
+    }
+    return collected;
+  }
+
+  async function fetchWithFallback(endpoints, optional) {
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        return await fetchAllPages(endpoint);
+      } catch (error) {
+        lastError = error;
+        if (isNotFound(error)) continue;
+        if (isForbidden(error)) {
+          State.warnings.push(endpoint + ': ' + error.message);
+          if (optional) return [];
+          throw error;
+        }
+        if (optional) continue;
+        throw error;
+      }
+    }
+    if (optional) return [];
+    if (lastError) throw lastError;
+    return [];
+  }
+
+  async function fetchRawWithFallback(endpoints, optional) {
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      const path = endpoint.startsWith('/api2/') || endpoint.startsWith('/api2/') ? endpoint : '/api2/' + endpoint;
+      try {
+        return await apiCall('GET', path, null, { timeoutMs: 60000 });
+      } catch (error) {
+        lastError = error;
+        if (isNotFound(error)) continue;
+        if (isForbidden(error)) {
+          State.warnings.push(endpoint + ': ' + error.message);
+          if (optional) return null;
+          throw error;
+        }
+        if (optional) continue;
+        throw error;
+      }
+    }
+    if (optional) return null;
+    if (lastError) throw lastError;
+    return null;
+  }
+
+  function unwrapKey(value) {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim().replace(/^"|"$/g, '');
+      return trimmed || null;
+    }
+    return value.key || value.Key || value.id || value.Id || null;
+  }
+
+  function firstItem(value) {
+    if (Array.isArray(value)) return E.unwrapItem(value[0]);
+    if (value && Array.isArray(value.items)) return E.unwrapItem(value.items[0]);
+    return E.unwrapItem(value);
+  }
+
+  function readField(record, name) {
+    if (!record) return null;
+    return record[name] !== undefined ? record[name] : record[name.charAt(0).toUpperCase() + name.slice(1)];
+  }
+
+  function normalizeDocTypeMap(rawByType) {
+    const out = {};
+    for (const type of E.DOC_TYPES) {
+      out[type.key] = rawByType[type.key] || [];
+    }
+    return out;
+  }
+
+  function groupMapFrom(items) {
+    const map = {};
+    for (const raw of items || []) {
+      const item = E.unwrapItem(raw) || {};
+      const key = item.key || item.Key || raw && raw.key;
+      if (!key) continue;
+      map[String(key).toLowerCase()] = item;
+      map[String(key)] = item;
+    }
+    return map;
+  }
+
+  function applyConfigToInputs() {
+    const config = State.config || E.defaultConfig();
+    const start = $('#fbr-start');
+    const from = $('#period-from');
+    const to = $('#period-to');
+    if (start) start.value = config.fbrStartDate || config.defaultPeriodFrom || E.firstDayOfYear(today());
+    if (from) from.value = config.defaultPeriodFrom || config.fbrStartDate || E.firstDayOfYear(today());
+    if (to) to.value = config.defaultPeriodTo || today();
+  }
+
+  function currentOptions() {
+    const start = $('#fbr-start') && $('#fbr-start').value;
+    const from = $('#period-from') && $('#period-from').value;
+    const to = $('#period-to') && $('#period-to').value;
+    return {
+      fbrStartDate: start || (State.config && State.config.fbrStartDate) || E.firstDayOfYear(today()),
+      periodFrom: from || start || (State.config && State.config.defaultPeriodFrom) || E.firstDayOfYear(today()),
+      periodTo: to || (State.config && State.config.defaultPeriodTo) || today(),
+      includeForeign: false
+    };
+  }
+
+  function glRangeCovers(options) {
+    if (!State.glRange) return false;
+    return State.glRange.from <= options.fbrStartDate && State.glRange.to >= options.periodTo;
+  }
+
+  function recompute() {
+    if (!State.accountIndex || !State.docIndex) return;
+    const options = currentOptions();
+    State.result = E.computeReports({
+      glModel: State.glModel || { rows: [] },
+      accountIndex: State.accountIndex,
+      docIndex: State.docIndex,
+      adjustments: State.adjustments,
+      options: options
+    });
+    if (State.glModel && !glRangeCovers(options)) {
+      State.result.warnings.unshift('The loaded GL report covers ' + State.glRange.from + ' to ' + State.glRange.to + '. Prepare / refresh the GL report for the selected dates.');
+    }
+  }
+
+  async function loadBaseData() {
+    State.loading = true;
+    State.error = null;
+    State.warnings = [];
+    setBusy(true, 'Reading FBR fields', 'Custom fields and placement');
+    try {
+      const [checkboxFields, textFields, businessDetails] = await Promise.all([
+        fetchWithFallback(['/api2/checkbox-custom-fields', '/api2/checkbox-custom-field-batch'], false),
+        fetchWithFallback(['/api2/text-custom-fields', '/api2/text-custom-field-batch'], false),
+        fetchRawWithFallback(['business-details'], true)
+      ]);
+      const detected = E.detectFbrFields({ checkboxCustomFields: checkboxFields, textCustomFields: textFields });
+      State.fbrField = detected.checkbox;
+      State.adjustmentField = detected.adjustment;
+      if (!State.fbrField) {
+        const foundNames = (checkboxFields || []).map((f) => f && (f.name || f.Name || f.item && (f.item.name || f.item.Name))).filter(Boolean);
+        const existingUuid = '01a16857-7f54-7da0-a97e-2c29ec11bf7e';
+        const foundUuid = (checkboxFields || []).map((f) => f && (f.key || f.Key || f.id)).filter(Boolean);
+        const hasUuid = foundUuid.includes(existingUuid) || foundUuid.some((k) => String(k).toLowerCase() === existingUuid.toLowerCase());
+        const endpointCalled = '/api2/checkbox-custom-fields';
+        const responseCount = checkboxFields ? checkboxFields.length : 0;
+        const responseSummary = checkboxFields ? checkboxFields.map((f) => {
+          const item = f && (f.item || f);
+          return item ? (item.name || item.Name || item.key || item.Key || 'unknown') : 'null';
+        }).join(', ') : 'empty';
+        const diagnosticMsg = 'FBR checkbox discovery failed. Endpoint: ' + endpointCalled + '. Response fields: ' + responseCount + '. Existing UUID ' + existingUuid + ' found in response: ' + (hasUuid ? 'YES' : 'NO') + '. Response names: ' + (foundNames.length ? foundNames.join(', ') : 'none') + '. Response summary: ' + responseSummary + '. Check API permissions, Manager context, field placement (9 document types), field name "FBR", and endpoint access.';
+        throw new Error('The FBR checkbox custom field was not found. Checked checkbox custom fields: ' + (foundNames.length ? foundNames.join(', ') : 'none') + '. ' + diagnosticMsg);
+      }
+      if (!State.adjustmentField) {
+        const foundNames = (textFields || []).map((f) => f && (f.name || f.Name || f.item && (f.item.name || f.item.Name))).filter(Boolean);
+        const existingUuid = '01a1685a-e683-7cf0-b9d0-4fac8715f4e9';
+        const foundUuid = (textFields || []).map((f) => f && (f.key || f.Key || f.id)).filter(Boolean);
+        const hasUuid = foundUuid.includes(existingUuid) || foundUuid.some((k) => String(k).toLowerCase() === existingUuid.toLowerCase());
+        const endpointCalled = '/api2/text-custom-fields';
+        const responseCount = textFields ? textFields.length : 0;
+        const responseSummary = textFields ? textFields.map((f) => {
+          const item = f && (f.item || f);
+          return item ? (item.name || item.Name || item.key || item.Key || 'unknown') : 'null';
+        }).join(', ') : 'empty';
+        const diagnosticMsg = 'FBR Adjustment discovery failed. Endpoint: ' + endpointCalled + '. Response fields: ' + responseCount + '. Existing UUID ' + existingUuid + ' found: ' + (hasUuid ? 'YES' : 'NO') + '. Response names: ' + (foundNames.length ? foundNames.join(', ') : 'none') + '. Response summary: ' + responseSummary + '. Check API permissions, Manager context, and endpoint access.';
+        throw new Error('The FBR Adjustment text field was not found. Checked text custom fields: ' + (foundNames.length ? foundNames.join(', ') : 'none') + '. ' + diagnosticMsg);
+      }
+      State.placement = E.placementStatus(State.fbrField, E.DOC_TYPES);
+      const bd = firstItem(businessDetails);
+      State.business = bd || null;
+      State.businessName = (bd && (bd.name || bd.Name)) || State.context.business || 'Manager business';
+
+      setBusy(true, 'Reading chart of accounts', 'Accounts, groups and base currency');
+      const [allAccounts, plGroups, bsGroups, customers, suppliers, employees, baseCurrency, folders] = await Promise.all([
+        fetchWithFallback(['/api2/chart-of-accounts'], false),
+        fetchWithFallback(['profit-and-loss-statement-group-batch'], true),
+        fetchWithFallback(['balance-sheet-group-batch'], true),
+        fetchWithFallback(['customers', 'customer-batch'], true),
+        fetchWithFallback(['suppliers', 'supplier-batch'], true),
+        fetchWithFallback(['employees', 'employee-batch'], true),
+        fetchRawWithFallback(['base-currency'], true),
+        fetchFullFolders()
+      ]);
+      const groups = Object.assign({}, groupMapFrom(plGroups), groupMapFrom(bsGroups));
+
+      // Classify accounts from chart-of-accounts by account code (first digit of code in name)
+      // 1xxx = Assets (BS), 2xxx = Liabilities (BS), 3xxx = Equity (BS)
+      // 4xxx = Revenue (PL), 5xxx = Expenses (PL), 6xxx+ = Expenses/Other (PL)
+      const plAccounts = [];
+      const bsAccounts = [];
+      for (const acct of allAccounts || []) {
+        const item = E.unwrapItem(acct) || {};
+        const name = item.name || item.Name || '';
+        const codeMatch = name.match(/^(\d{4,})/);
+        const firstDigit = codeMatch ? parseInt(codeMatch[1][0], 10) : null;
+        if (firstDigit >= 1 && firstDigit <= 3) {
+          bsAccounts.push(acct);
+        } else {
+          plAccounts.push(acct);
+        }
+      }
+
+      State.accountIndex = E.buildAccountIndex(plAccounts, bsAccounts, { groups: groups });
+      State.partyIndex = E.buildPartyIndex(customers, suppliers, employees, []);
+      const base = firstItem(baseCurrency);
+      State.baseCurrencyKey = base && (base.key || base.Key || base.code || base.Code) || null;
+      State.folders = folders;
+      const parsedConfig = E.parseConfigFolder(folders, State.adjustmentField.key);
+      if (parsedConfig && parsedConfig.error) State.warnings.push(parsedConfig.error);
+      State.config = parsedConfig && !parsedConfig.error ? parsedConfig : E.defaultConfig();
+      const parsedAdjustments = E.parseAdjustmentFolders(folders, State.adjustmentField.key, State.accountIndex);
+      State.adjustments = parsedAdjustments.adjustments;
+      State.invalidAdjustments = parsedAdjustments.invalid;
+      applyConfigToInputs();
+
+      const enabledTypes = E.DOC_TYPES.filter((type) => State.placement.placement.includes(String(type.typeGuid).toLowerCase()));
+      const rawByType = {};
+      let docProgress = 0;
+      for (const type of enabledTypes) {
+        docProgress += 1;
+        setBusy(true, 'Reading ' + type.label + ' documents', docProgress + ' of ' + enabledTypes.length);
+        rawByType[type.key] = await fetchWithFallback(type.endpoints, true);
+      }
+      State.docIndex = E.buildDocumentIndex(rawByType, {
+        types: enabledTypes,
+        fbrFieldKey: State.fbrField.key,
+        partyIndex: State.partyIndex,
+        baseCurrencyKey: State.baseCurrencyKey
+      });
+      if (enabledTypes.some((type) => type.key === 'sales-invoice')) {
+        setBusy(true, 'Reading late payment fees', 'Indirect FBR links');
+        const lateFees = await fetchWithFallback(E.LATE_FEE_TYPE.endpoints, true);
+        E.attachLateFeeLinks(State.docIndex, lateFees);
+      }
+      State.loaded = true;
+      setConnection('ok', 'Connected: ' + State.businessName);
+      recompute();
+      renderAll();
+      if (!State.glModel) toast('Base data loaded. Prepare the GL report to see figures.', 'warn');
+      else toast('FBR data loaded.', 'ok');
+    } catch (error) {
+      State.error = error;
+      setConnection('bad', 'Manager error');
+      renderError(error);
+      toast(error.message || String(error), 'bad');
+    } finally {
+      State.loading = false;
+      setBusy(false);
+    }
+  }
+
+  function rangeCovers(range, from, to) {
+    return !!(range && range.from && range.to && range.from <= from && range.to >= to);
+  }
+
+  async function createGlDefinition(description, from, to) {
+    const formBody = {
+      Description: description,
+      FromDate: from + 'T00:00:00',
+      ToDate: to + 'T00:00:00',
+      Account: null
+    };
+    let response;
+    try {
+      response = await apiCall('POST', '/api2/general-ledger-transactions-form', formBody, { timeoutMs: 60000 });
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+      response = await apiCall('POST', '/api2/general-ledger-transactions', {
+        value: { description: description, fromDate: from, toDate: to, account: null }
+      }, { timeoutMs: 60000 });
+    }
+    const key = unwrapKey(response);
+    if (!key) throw new Error('Manager did not return a key for the new GL report definition.');
+    return key;
+  }
+
+  async function ensureGlReport() {
+    const options = currentOptions();
+    if (!options.fbrStartDate || !options.periodTo) throw new Error('Set the FBR start and period end dates first.');
+    const wantedFrom = options.fbrStartDate;
+    const wantedTo = options.periodTo;
+    const description = 'FBR-GL-SOURCE ' + wantedFrom + ' to ' + wantedTo;
+    let key = null;
+    let created = false;
+
+    if (State.config && State.config.glReportKey && rangeCovers(State.config.glRange, wantedFrom, wantedTo)) {
+      key = State.config.glReportKey;
+    }
+    if (!key) {
+      setBusy(true, 'Finding GL report definition', 'Read-only lookup');
+      let definitions = [];
+      try {
+        definitions = await fetchWithFallback(['/api2/general-ledger-transactions-batch', '/api2/general-ledger-transactions'], true);
+      } catch (error) {
+        definitions = [];
+      }
+      const definition = definitions.map(E.unwrapItem).find((item) => {
+        if (!item) return false;
+        const desc = String(item.description || item.Description || '');
+        const from = E.parseDateOnly(item.fromDate || item.FromDate);
+        const to = E.parseDateOnly(item.toDate || item.ToDate);
+        return desc.indexOf('FBR-GL-SOURCE') === 0 && from === wantedFrom && to === wantedTo;
+      }) || null;
+      key = definition && (definition.key || definition.Key) || null;
+    }
+
+    if (!key) {
+      setBusy(true, 'Creating GL report definition', 'Reporting definition only');
+      key = await createGlDefinition(description, wantedFrom, wantedTo);
+      created = true;
+    }
+
+    // Build GL model from FBR-tagged document forms (view endpoint not available on this server version)
+    setBusy(true, 'Building GL model from documents', 'Fetching full forms for FBR-tagged transactions');
+    const glBuildResult = await buildGlModelFromDocuments(wantedFrom, wantedTo);
+    const model = glBuildResult.model;
+    const formFetchWarnings = glBuildResult.warnings || [];
+
+    State.glReportKey = key;
+    State.glRange = { from: wantedFrom, to: wantedTo };
+    State.glModel = model;
+
+    const storedKey = State.config && State.config.glReportKey;
+    const storedRange = State.config && State.config.glRange;
+    if (created || storedKey !== key || !rangeCovers(storedRange, wantedFrom, wantedTo)) {
+      const nextConfig = E.buildConfig({
+        fbrStartDate: options.fbrStartDate,
+        defaultPeriodFrom: options.fbrStartDate,
+        defaultPeriodTo: options.periodTo,
+        includeForeign: false,
+        operator: 'unverified',
+        glReportKey: key,
+        glRange: { from: wantedFrom, to: wantedTo }
+      });
+      const saved = await saveConfig(nextConfig, true);
+      if (!saved) State.warnings.push('Could not store the GL report key in FBR-CONFIG.');
+    }
+    recompute();
+    // Merge form fetch warnings into result so they appear in dashboard/reconciliation
+    if (formFetchWarnings.length > 0) {
+      State.result.warnings.unshift(...formFetchWarnings);
+    }
+    renderAll();
+  }
+
+  async function buildGlModelFromDocuments(from, to) {
+    if (!State.docIndex || !State.accountIndex) return { rows: [] };
+    const docIndex = State.docIndex;
+    const accountIndex = State.accountIndex;
+    const accountGroups = new Map();
+
+    function getGroup(accountKey, accountName, accountType) {
+      const groupKey = accountKey || 'UNMAPPED:' + accountName;
+      if (!accountGroups.has(groupKey)) {
+        accountGroups.set(groupKey, {
+          name: accountName || 'Unknown Account',
+          accountKey: accountKey,
+          accountType: accountType,
+          rows: []
+        });
+      }
+      return accountGroups.get(groupKey);
+    }
+
+    function addGlLine(doc, accountKey, accountName, accountType, debit, credit, description) {
+      const group = getGroup(accountKey, accountName, accountType);
+      const href = '/api2/' + doc.type + '-form/' + encodeURIComponent(doc.rawKey);
+      group.rows.push({
+        name: description || doc.reference || doc.key,
+        cells: [
+          { value: debit || 0, link: { href: href } },
+          { value: credit || 0, link: { href: href } },
+          { value: (debit || 0) - (credit || 0) }
+        ],
+        docKey: doc.key
+      });
+    }
+
+    // Helper to fetch full form for a document
+    const fetchWarnings = [];
+    async function fetchDocForm(doc) {
+      const endpoint = '/api2/' + doc.type + '-form/' + encodeURIComponent(doc.rawKey);
+      try {
+        const form = await apiCall('GET', endpoint, null, { timeoutMs: 60000 });
+        return form;
+      } catch (error) {
+        fetchWarnings.push('Failed to fetch form for ' + doc.typeLabel + ' ' + doc.rawKey + ': ' + error.message);
+        return null;
+      }
+    }
+
+    // Process each document type: fetch forms for all docs in range, check FBR on form
+    const enabledTypes = E.DOC_TYPES.filter((type) => State.placement.placement.includes(String(type.typeGuid).toLowerCase()));
+    let processedCount = 0;
+    let totalToProcess = 0;
+
+    // First pass: count all documents in range (regardless of list FBR flag) for progress
+    for (const type of enabledTypes) {
+      const docs = docIndex.byType.get(type.key) || [];
+      for (const doc of docs) {
+        if (!doc.date || doc.date < from || doc.date > to) continue;
+        totalToProcess++;
+      }
+    }
+
+    for (const type of enabledTypes) {
+      const docs = docIndex.byType.get(type.key) || [];
+      for (const doc of docs) {
+        if (!doc.date || doc.date < from || doc.date > to) continue;
+        // Do NOT skip based on doc.fbr from list endpoint; list endpoints may omit CustomFields2
+        // We will fetch the form and check FBR there.
+
+        processedCount++;
+        setBusy(true, 'Processing ' + type.label, processedCount + ' of ' + totalToProcess);
+
+        const form = await fetchDocForm(doc);
+        if (!form) continue;
+
+        // Check FBR checkbox on the form (authoritative source)
+        const formFbr = E.readCheckbox(form, State.fbrField.key);
+        if (!formFbr) continue; // Skip if not FBR-tagged on the form
+
+        // Update docIndex with authoritative FBR value so computeReports includes this document
+        const docInIndex = docIndex.byKey.get(doc.key);
+        if (docInIndex) docInIndex.fbr = true;
+
+        // Process based on document type
+        if (type.key === 'receipt' || type.key === 'payment' || type.key === 'expense-claim') {
+          // Receipts, Payments, Expense Claims have Lines array
+          const lines = form.Lines || form.lines || [];
+          for (const line of lines) {
+            const accountId = line.Account || line.account;
+            const amount = E.num(line.Amount || line.amount || 0);
+            if (amount === 0) continue;
+
+            let accountKey = null;
+            let accountName = '';
+            let accountType = 'BS';
+            if (accountId && accountIndex) {
+              const acct = accountIndex.byKey.get(String(accountId).toLowerCase());
+              if (acct) {
+                accountKey = acct.key;
+                accountName = acct.nameWithCode;
+                accountType = acct.type;
+              }
+            }
+            if (!accountKey) {
+              accountName = accountId || 'Unknown Account';
+            }
+
+            // Receipt: account in Lines is CREDIT (money coming in)
+            // Payment/Expense Claim: account in Lines is DEBIT (money going out)
+            let debit = 0, credit = 0;
+            if (type.key === 'receipt') {
+              credit = amount;
+            } else {
+              debit = amount;
+            }
+
+            const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
+            addGlLine(doc, line, accountKey, accountName, accountType, debit, credit, desc);
+          }
+        } else if (type.key === 'inter-account-transfer') {
+          // Inter Account Transfer has PaidFrom (credit), ReceivedIn (debit), CreditAmount/DebitAmount
+          const amount = E.num(form.CreditAmount || form.DebitAmount || form.Amount || 0);
+          if (amount > 0) {
+            const paidFromId = form.PaidFrom || form.paidFrom;
+            const receivedInId = form.ReceivedIn || form.receivedIn;
+
+            // PaidFrom account: CREDIT (money leaving)
+            if (paidFromId) {
+              let accountKey = null, accountName = '', accountType = 'BS';
+              if (accountIndex) {
+                const acct = accountIndex.byKey.get(String(paidFromId).toLowerCase());
+                if (acct) { accountKey = acct.key; accountName = acct.nameWithCode; accountType = acct.type; }
+              }
+              if (!accountKey) accountName = paidFromId || 'Paid From Account';
+              const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
+              addGlLine(doc, null, accountKey, accountName, accountType, 0, amount, desc);
+            }
+
+            // ReceivedIn account: DEBIT (money entering)
+            if (receivedInId) {
+              let accountKey = null, accountName = '', accountType = 'BS';
+              if (accountIndex) {
+                const acct = accountIndex.byKey.get(String(receivedInId).toLowerCase());
+                if (acct) { accountKey = acct.key; accountName = acct.nameWithCode; accountType = acct.type; }
+              }
+              if (!accountKey) accountName = receivedInId || 'Received In Account';
+              const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
+              addGlLine(doc, null, accountKey, accountName, accountType, amount, 0, desc);
+            }
+          }
+        } else if (type.key === 'journal-entry') {
+          // Journal Entries have Lines with Debit/Credit
+          const lines = form.Lines || form.lines || [];
+          for (const line of lines) {
+            const accountId = line.Account || line.account;
+            const debit = E.num(line.Debit || line.debit || 0);
+            const credit = E.num(line.Credit || line.credit || 0);
+            if (debit === 0 && credit === 0) continue;
+
+            let accountKey = null, accountName = '', accountType = 'BS';
+            if (accountId && accountIndex) {
+              const acct = accountIndex.byKey.get(String(accountId).toLowerCase());
+              if (acct) { accountKey = acct.key; accountName = acct.nameWithCode; accountType = acct.type; }
+            }
+            if (!accountKey) accountName = accountId || 'Unknown Account';
+
+            const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
+            addGlLine(doc, line, accountKey, accountName, accountType, debit, credit, desc);
+          }
+        } else {
+          // Sales Invoice, Purchase Invoice, Credit Note, Debit Note - have Lines with Debit/Credit
+          const lines = form.Lines || form.lines || [];
+          for (const line of lines) {
+            const accountId = line.Account || line.account;
+            const debit = E.num(line.Debit || line.debit || 0);
+            const credit = E.num(line.Credit || line.credit || 0);
+            if (debit === 0 && credit === 0) continue;
+
+            let accountKey = null, accountName = '', accountType = 'BS';
+            if (accountId && accountIndex) {
+              const acct = accountIndex.byKey.get(String(accountId).toLowerCase());
+              if (acct) { accountKey = acct.key; accountName = acct.nameWithCode; accountType = acct.type; }
+            }
+            if (!accountKey) accountName = accountId || 'Unknown Account';
+
+            const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
+            addGlLine(doc, line, accountKey, accountName, accountType, debit, credit, desc);
+          }
+        }
+      }
+    }
+
+    // Also process Late Payment Fees if linked to FBR-tagged Sales Invoices
+    const lateFees = docIndex.byType.get('late-payment-fee') || [];
+    for (const fee of lateFees) {
+      if (!fee.date || fee.date < from || fee.date > to) continue;
+      // Check linked invoice's FBR status (updated during main doc processing)
+      const linkedInvoice = fee.linkedInvoiceKey ? docIndex.byKey.get(fee.linkedInvoiceKey) : null;
+      if (!linkedInvoice || !linkedInvoice.fbr) continue;
+
+      const form = await fetchDocForm(fee);
+      if (!form) {
+        fetchWarnings.push('Failed to fetch form for ' + fee.typeLabel + ' ' + fee.rawKey + ': form fetch failed');
+        continue;
+      }
+
+      // Late Payment Fees typically have Lines with income account
+      const lines = form.Lines || form.lines || [];
+      for (const line of lines) {
+        const accountId = line.Account || line.account;
+        const amount = E.num(line.Amount || line.amount || 0);
+        if (amount === 0) continue;
+
+        let accountKey = null, accountName = '', accountType = 'PL';
+        if (accountId && accountIndex) {
+          const acct = accountIndex.byKey.get(String(accountId).toLowerCase());
+          if (acct) { accountKey = acct.key; accountName = acct.nameWithCode; accountType = acct.type; }
+        }
+        if (!accountKey) accountName = 'Late Payment Fee Income';
+
+        const desc = fee.date + ' - ' + fee.typeLabel + ' ' + (fee.reference || fee.key.slice(0, 8));
+        addGlLine(fee, line, accountKey, accountName, accountType, amount, 0, desc);
+      }
+    }
+
+    // Convert groups to rows array
+    const rows = [];
+    for (const group of accountGroups.values()) {
+      if (group.rows.length > 0) {
+        rows.push({
+          name: group.name,
+          rows: group.rows
+        });
+      }
+    }
+
+    // Add synthetic total rows
+    rows.push({
+      name: 'Total',
+      isBold: true,
+      cells: [{ value: 0 }, { value: 0 }, { value: 0 }]
+    });
+
+    return { model: { rows }, warnings: fetchWarnings };
+  }
+
+  async function fetchFullFolders() {
+    const folders = await fetchWithFallback(['/api2/folders', '/api2/folder-batch'], false);
+    const full = [];
+    for (const folder of folders) {
+      const key = E.itemKey(folder);
+      const item = E.unwrapItem(folder) || {};
+      if (!key || item.customFields2 || item.CustomFields2 || item.customFields || item.CustomFields) {
+        full.push(folder);
+        continue;
+      }
+      try {
+        const record = await apiCall('GET', '/api2/folder-form/' + encodeURIComponent(key), null, { timeoutMs: 60000 });
+        full.push({ key: key, item: record || item });
+      } catch (error) {
+        full.push(folder);
+        State.warnings.push('Folder ' + key + ': ' + error.message);
+      }
+    }
+    return full;
+  }
+
+  async function refreshFolders() {
+    const folders = await fetchFullFolders();
+    State.folders = folders;
+    State.config = E.parseConfigFolder(folders, State.adjustmentField.key) || State.config || E.defaultConfig();
+    const parsed = E.parseAdjustmentFolders(folders, State.adjustmentField.key, State.accountIndex);
+    State.adjustments = parsed.adjustments;
+    State.invalidAdjustments = parsed.invalid;
+  }
+
+  function folderCollectionBody(body) {
+    const value = body && body.value ? body.value : body || {};
+    return {
+      value: {
+        description: value.Description || value.description || '',
+        customFields2: {
+          strings: (value.CustomFields2 && value.CustomFields2.Strings) || (value.customFields2 && value.customFields2.strings) || {}
+        }
+      }
+    };
+  }
+
+  async function createFolder(body) {
+    try {
+      return await apiCall('POST', '/api2/folder-form', body, { timeoutMs: 60000 });
+    } catch (error) {
+      if (isNotFound(error)) return await apiCall('POST', '/api2/folder', folderCollectionBody(body), { timeoutMs: 60000 });
+      throw error;
+    }
+  }
+
+  async function updateFolder(key, body) {
+    const attempts = [
+      ['PUT', '/api2/folder-form/' + encodeURIComponent(key), Object.assign({ Key: key }, body)],
+      ['PUT', '/api2/folder', Object.assign({ key: key }, folderCollectionBody(body))]
+    ];
+    for (const attempt of attempts) {
+      try {
+        await apiCall(attempt[0], attempt[1], attempt[2], { timeoutMs: 60000 });
+        return true;
+      } catch (error) {
+        if (isForbidden(error)) throw error;
+      }
+    }
+    return false;
+  }
+
+  async function saveAdjustment(adjustment) {
+    const validation = E.validateAdjustment(adjustment, State.accountIndex);
+    if (validation.errors.length) {
+      toast(validation.errors.join(' '), 'bad');
+      return false;
+    }
+    setBusy(true, 'Saving adjustment', 'Creating an append-only Folder record');
+    try {
+      const response = await createFolder(E.adjustmentFolderBody(adjustment, State.adjustmentField.key));
+      if (!response) {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+      await refreshFolders();
+      recompute();
+      renderAll();
+      toast('Adjustment ' + adjustment.id + ' saved.', 'ok');
+      return true;
+    } catch (error) {
+      toast('Could not save adjustment: ' + error.message, 'bad');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveConfig(config, silent) {
+    setBusy(true, 'Saving FBR configuration', 'Folder record');
+    try {
+      let updated = false;
+      if (State.config && State.config.folderKey) {
+        updated = await updateFolder(State.config.folderKey, E.configFolderBody(config, State.adjustmentField.key));
+      }
+      if (!updated) await createFolder(E.configFolderBody(config, State.adjustmentField.key));
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await refreshFolders();
+      recompute();
+      renderAll();
+      if (!silent) toast('FBR configuration saved.', 'ok');
+      return true;
+    } catch (error) {
+      if (!silent) toast('Could not save configuration: ' + error.message, 'bad');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function cleanAdjustment(adjustment) {
+    return {
+      schemaVersion: E.SCHEMA_VERSION,
+      id: adjustment.id,
+      type: adjustment.type,
+      date: adjustment.date,
+      description: adjustment.description,
+      reason: adjustment.reason,
+      reverses: adjustment.reverses,
+      operator: adjustment.operator,
+      lines: (adjustment.lines || []).map((line) => ({
+        accountKey: line.accountKey,
+        accountName: line.accountName,
+        debit: line.debit,
+        credit: line.credit,
+        description: line.description
+      }))
+    };
+  }
+
+  function downloadJson(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  function downloadText(filename, text, type) {
+    const blob = new Blob([text], { type: type || 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  function exportBackup() {
+    const backup = {
+      app: 'fbr-parallel-accounting',
+      schemaVersion: E.SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      business: State.businessName,
+      config: State.config ? {
+        schemaVersion: E.SCHEMA_VERSION,
+        fbrStartDate: State.config.fbrStartDate,
+        defaultPeriodFrom: State.config.defaultPeriodFrom,
+        defaultPeriodTo: State.config.defaultPeriodTo,
+        includeForeign: State.config.includeForeign,
+        operator: State.config.operator
+      } : null,
+      adjustments: State.adjustments.map(cleanAdjustment),
+      meta: {
+        glReportKey: State.glReportKey,
+        glRange: State.glRange,
+        adjustmentCount: State.adjustments.length,
+        invalidAdjustmentCount: State.invalidAdjustments.length
+      }
+    };
+    downloadJson('fbr-backup-' + today() + '.json', backup);
+    toast('Backup exported.', 'ok');
+  }
+
+  function openBackupImport() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const adjustments = Array.isArray(data.adjustments) ? data.adjustments : [];
+        const existing = new Set(State.adjustments.map((adjustment) => adjustment.id));
+        const preview = adjustments.map((raw) => {
+          const validation = E.validateAdjustment(raw, State.accountIndex);
+          return {
+            raw: raw,
+            id: raw.id || '(missing)',
+            date: raw.date || '',
+            type: raw.type || '',
+            description: raw.description || '',
+            errors: validation.errors,
+            duplicate: existing.has(raw.id)
+          };
+        });
+        State.backupPreview = { data: data, rows: preview };
+        renderBackupPreview();
+      } catch (error) {
+        toast('Could not read backup: ' + error.message, 'bad');
+      }
+    });
+    input.click();
+  }
+
+  function renderBackupPreview() {
+    const preview = State.backupPreview;
+    if (!preview) return;
+    const rows = preview.rows;
+    const valid = rows.filter((row) => row.errors.length === 0 && !row.duplicate);
+    const body = '<p class="sub">Review the backup before restoring. Only valid, non-duplicate adjustments are restored. Configuration is not changed automatically.</p>' +
+      '<div class="grid cols-3">' +
+      '<div class="card kpi"><div class="label">Valid new</div><div class="value">' + valid.length + '</div></div>' +
+      '<div class="card kpi"><div class="label">Duplicates</div><div class="value">' + rows.filter((row) => row.duplicate).length + '</div></div>' +
+      '<div class="card kpi"><div class="label">Invalid</div><div class="value">' + rows.filter((row) => row.errors.length).length + '</div></div>' +
+      '</div>' +
+      '<div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>ID</th><th>Date</th><th>Type</th><th>Description</th><th>Status</th></tr></thead><tbody>' +
+      rows.map((row) => '<tr><td class="mono">' + esc(row.id) + '</td><td>' + esc(row.date) + '</td><td>' + esc(row.type) + '</td><td>' + esc(row.description) + '</td><td>' +
+        (row.errors.length ? '<span class="pill fail">Invalid</span> ' + esc(row.errors.join('; ')) : row.duplicate ? '<span class="pill warn">Duplicate</span>' : '<span class="pill ok">New</span>') +
+        '</td></tr>').join('') +
+      '</tbody></table></div>';
+    openModal('Restore backup preview', body, [
+      { label: 'Cancel', className: 'btn-outline', action: 'close-modal' },
+      { label: 'Restore ' + valid.length + ' adjustment(s)', className: 'btn-primary', action: 'restore-backup', disabled: valid.length === 0 }
+    ]);
+  }
+
+  async function restoreBackup() {
+    const preview = State.backupPreview;
+    if (!preview) return;
+    const valid = preview.rows.filter((row) => row.errors.length === 0 && !row.duplicate);
+    if (!valid.length) return;
+    closeModal();
+    setBusy(true, 'Restoring adjustments', 'Creating Folder records');
+    let saved = 0;
+    let failed = 0;
+    for (const row of valid) {
+      try {
+        const validation = E.validateAdjustment(row.raw, State.accountIndex);
+        if (validation.errors.length) { failed += 1; continue; }
+        await createFolder(E.adjustmentFolderBody(validation.adjustment, State.adjustmentField.key));
+        saved += 1;
+      } catch (error) {
+        failed += 1;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await refreshFolders();
+    recompute();
+    renderAll();
+    setBusy(false);
+    toast('Restored ' + saved + ' adjustment(s)' + (failed ? '; ' + failed + ' failed' : '') + '.', failed ? 'warn' : 'ok');
+  }
+
+  function openModal(title, body, actions, options) {
+    const root = $('#modal-root');
+    const width = options && options.small ? ' small' : '';
+    root.innerHTML = '<div class="modal-backdrop open"><div class="modal' + width + '">' +
+      '<div class="modal-head"><h2>' + esc(title) + '</h2><button class="x" data-action="close-modal" aria-label="Close">├ù</button></div>' +
+      '<div class="modal-body">' + body + '</div>' +
+      '<div class="modal-foot">' + (actions || []).map((action) =>
+        '<button class="btn ' + esc(action.className || 'btn-outline') + '" data-action="' + esc(action.action || '') + '"' + (action.disabled ? ' disabled' : '') + '>' + esc(action.label) + '</button>'
+      ).join('') + '</div>' +
+      '</div></div>';
+  }
+
+  function closeModal() {
+    const root = $('#modal-root');
+    if (root) root.innerHTML = '';
+  }
+
+  function openHelp() {
+    const body = '<div class="readme">' +
+      '<p><strong>FBR Parallel Accounting</strong> builds FBR selected-transaction reports from posted Manager.io ledger rows. It does not replace Manager\'s statutory reports and it does not post journals.</p>' +
+      '<div class="help-grid">' +
+      '<div class="help-item"><strong>1. Tag documents</strong><span>Tick the <code>FBR</code> checkbox on each document that belongs in the parallel ledger.</span></div>' +
+      '<div class="help-item"><strong>2. Set the start date</strong><span>The FBR start date is the date the selected-transaction ledger begins. Native pre-FBR balances are excluded unless you enter explicit opening adjustments.</span></div>' +
+      '<div class="help-item"><strong>3. Prepare the GL report</strong><span>This creates or reuses a reporting-only General Ledger Transactions definition, then reads its view. No journals are posted.</span></div>' +
+      '<div class="help-item"><strong>4. Add adjustments</strong><span>Adjustments are stored as append-only Folder records with the <code>FBR Adjustment</code> field. No localStorage or external database is used.</span></div>' +
+      '</div>' +
+      '<h3>What is included</h3><ul class="list">' +
+      '<li>Directly tagged Sales Invoices, Purchase Invoices, Credit Notes, Debit Notes, Journal Entries, Receipts, Payments, Expense Claims and Inter Account Transfers.</li>' +
+      '<li>Late Payment Fees only when the linked Sales Invoice is tagged.</li>' +
+      '<li>Optional document types only when the FBR field is placed on them.</li>' +
+      '</ul>' +
+      '<h3>What is excluded</h3><ul class="list">' +
+      '<li>Foreign-currency documents in V1. They are listed in the exclusions panel.</li>' +
+      '<li>Untagged documents and pre-start documents.</li>' +
+      '<li>Native opening balances and automatic revaluation rows.</li>' +
+      '<li>Inventory Write-off, Production Order and other types until the FBR field is placed on them.</li>' +
+      '</ul>' +
+      '<h3>Controls</h3><ul class="list">' +
+      '<li>Trial balance must balance; the balance sheet must balance; adjustments must balance.</li>' +
+      '<li>Unknown GL links and unmatched account groups are shown as warnings, never plugged into a suspense account.</li>' +
+      '<li>Every save is explicit. The extension never edits an existing FBR flag or posts a journal.</li>' +
+      '</ul>' +
+      '<h3>Operator</h3><p>Manager does not expose an authenticated user identity to the iframe. Operator is recorded as <strong>unverified</strong>.</p>' +
+      '</div>';
+    openModal('How this extension works', body, [{ label: 'Close', className: 'btn-primary', action: 'close-modal' }]);
+  }
+
+  function renderError(error) {
+    const view = $('#view');
+    if (!view) return;
+    view.innerHTML = '<div class="banner danger"><div class="banner-icon">!</div><div><h3>Could not load FBR data</h3><p>' + esc(error && error.message || String(error)) + '</p>' +
+      '<p class="small muted" style="margin-top:8px">Check that the FBR checkbox and FBR Adjustment fields exist, that the iframe has API permission, and that the Manager context has arrived.</p></div>' +
+      '<div class="banner-actions"><button class="btn btn-outline" data-action="load-data">Retry</button><button class="btn btn-outline" data-action="help">Help</button></div></div>';
+  }
+
+  function renderAll() {
+    const badges = { docs: $('#badge-docs'), adj: $('#badge-adj') };
+    if (badges.docs) badges.docs.textContent = String(State.docIndex ? State.docIndex.docs.length : 0);
+    if (badges.adj) badges.adj.textContent = String(State.adjustments.length);
+    $$('.nav-btn').forEach((button) => button.classList.toggle('active', button.getAttribute('data-tab') === State.tab));
+    if (!State.loaded) {
+      if (!State.error) renderWelcome();
+      return;
+    }
+    const views = {
+      dashboard: renderDashboard,
+      'trial-balance': renderTrialBalance,
+      'profit-loss': renderProfitAndLoss,
+      'balance-sheet': renderBalanceSheet,
+      documents: renderDocuments,
+      adjustments: renderAdjustments,
+      reconciliation: renderReconciliation,
+      settings: renderSettings
+    };
+    const render = views[State.tab] || renderDashboard;
+    render();
+    bindView();
+  }
+
+  function renderWelcome() {
+    const view = $('#view');
+    if (!view) return;
+    view.innerHTML = '<div class="banner"><div class="banner-icon">...</div><div><h3>Waiting for Manager.io</h3><p>Open this extension inside Manager.io. The extension needs the API context that Manager passes to the iframe.</p></div>' +
+      '<div class="banner-actions"><button class="btn btn-outline" data-action="help">Help</button></div></div>' +
+      '<div class="grid cols-2"><div class="card"><h2>Selected-transaction reporting</h2><p class="sub">FBR reports built from posted General Ledger rows, with document-level FBR flags and append-only adjustments stored in Manager Folders.</p><ul class="list"><li>No journals are posted.</li><li>No external database.</li><li>No edits to existing documents.</li></ul></div>' +
+      '<div class="card"><h2>Before you start</h2><ul class="list"><li>Create the <code>FBR</code> checkbox field and place it on the document headers.</li><li>Create the <code>FBR Adjustment</code> paragraph field and place it on Folder.</li><li>Tag the documents that belong in the parallel ledger.</li></ul></div></div>';
+  }
+
+  function renderRangeWarning() {
+    const options = currentOptions();
+    if (!State.glModel) {
+      return '<div class="banner warn"><div class="banner-icon">GL</div><div><h3>No GL report loaded</h3><p>Base data is loaded. Prepare or refresh the GL report to load posted ledger rows and compute the FBR reports.</p></div><div class="banner-actions"><button class="btn btn-primary" data-action="refresh-gl">Prepare GL report</button></div></div>';
+    }
+    if (!glRangeCovers(options)) {
+      return '<div class="banner warn"><div class="banner-icon">!</div><div><h3>GL report range does not cover these dates</h3><p>Loaded range: ' + esc(State.glRange.from) + ' to ' + esc(State.glRange.to) + '. Selected range: ' + esc(options.fbrStartDate) + ' to ' + esc(options.periodTo) + '.</p></div><div class="banner-actions"><button class="btn btn-primary" data-action="refresh-gl">Refresh GL report</button></div></div>';
+    }
+    return '';
+  }
+
+  function statusPill(status) {
+    const map = { pass: 'ok', warn: 'warn', fail: 'fail' };
+    const label = { pass: 'Pass', warn: 'Warning', fail: 'Fail' };
+    return '<span class="pill ' + (map[status] || 'neutral') + '">' + (label[status] || esc(status)) + '</span>';
+  }
+
+  function checkList(checks) {
+    return '<div class="checks">' + (checks || []).map((check) =>
+      '<div class="check"><div class="check-icon ' + esc(check.status) + '">' + (check.status === 'pass' ? 'Γ£ô' : check.status === 'fail' ? '!' : 'i') + '</div>' +
+      '<div><div class="check-title">' + esc(check.label) + '</div><div class="check-detail">' + esc(check.detail) + '</div></div>' + statusPill(check.status) + '</div>'
+    ).join('') + '</div>';
+  }
+
+  function kpi(label, value, note, className) {
+    return '<div class="card kpi ' + esc(className || '') + '"><div class="label">' + esc(label) + '</div><div class="value">' + value + '</div><div class="note">' + esc(note || '') + '</div></div>';
+  }
+
+  function renderDashboard() {
+    const result = State.result;
+    const view = $('#view');
+    if (!view || !result) return;
+    const options = result.meta;
+    const includedDocs = result.reconciliation.documentCount;
+    const net = result.profitAndLoss.totals.netProfit;
+    const tbDiff = result.trialBalance.totals.difference;
+    const bsDiff = result.balanceSheet.totals.difference;
+    const warningCount = result.warnings.length;
+    view.innerHTML = renderRangeWarning() +
+      '<div class="section-head"><h2>Dashboard</h2><span class="muted small">' + esc(State.businessName) + ' ┬╖ ' + esc(options.fbrStartDate) + ' to ' + esc(options.periodTo) + '</span><div class="spacer"></div><span class="pill ' + (result.ok ? 'ok' : 'fail') + '">' + (result.ok ? 'Controls pass' : 'Review controls') + '</span></div>' +
+      '<div class="grid cols-4">' +
+      kpi('Tagged documents', String(includedDocs), 'with posted GL rows', '') +
+      kpi('GL rows included', String(result.included.rows.length), 'debit ' + money(result.included.debit) + ' / credit ' + money(result.included.credit), '') +
+      kpi('Net profit', money(net), 'FBR selected transactions', net >= 0 ? 'good' : 'bad') +
+      kpi('Trial balance difference', money(tbDiff), Math.abs(tbDiff) < 0.005 ? 'balanced' : 'not balanced', Math.abs(tbDiff) < 0.005 ? 'good' : 'bad') +
+      '</div>' +
+      '<div class="grid cols-3" style="margin-top:14px">' +
+      kpi('Balance sheet difference', money(bsDiff), Math.abs(bsDiff) < 0.005 ? 'balanced' : 'not balanced', Math.abs(bsDiff) < 0.005 ? 'good' : 'bad') +
+      kpi('Adjustments', String(State.adjustments.length), State.invalidAdjustments.length + ' invalid folder(s)', State.invalidAdjustments.length ? 'warn' : '') +
+      kpi('Excluded rows', String(result.excluded.untagged.length + result.excluded.foreign.length + result.excluded.preStart.length + result.excluded.unknownDocument.length), 'untagged, foreign, pre-start, unresolved', 'warn') +
+      '</div>' +
+      '<div class="split" style="margin-top:14px">' +
+      '<div class="card"><div class="section-head"><h2>Controls</h2><div class="spacer"></div><button class="btn btn-sm btn-outline" data-action="go-reconciliation">Open reconciliation</button></div>' + checkList(result.reconciliation.checks) + '</div>' +
+      '<div class="card"><h3>What is in this run</h3><ul class="list">' +
+      '<li><strong>' + esc(result.included.documents.length) + '</strong> tagged document(s) with posted rows.</li>' +
+      '<li><strong>' + esc(result.excluded.untagged.length) + '</strong> untagged GL row(s) excluded.</li>' +
+      '<li><strong>' + esc(result.excluded.foreign.length) + '</strong> foreign-currency GL row(s) excluded.</li>' +
+      '<li><strong>' + esc(result.excluded.unknownDocument.length) + '</strong> unresolved source link(s).</li>' +
+      '<li><strong>' + esc(State.placement.unplaced.length) + '</strong> document type(s) not placed for FBR tagging.</li>' +
+      '</ul>' + (warningCount ? '<div class="banner warn" style="margin:12px 0 0"><div class="banner-icon">!</div><div><h3>' + warningCount + ' warning(s)</h3><p>' + esc(result.warnings.slice(0, 3).join(' ')) + '</p></div></div>' : '') +
+      '<div class="actions" style="margin-top:12px"><button class="btn btn-primary" data-action="new-adjustment">New adjustment</button><button class="btn btn-outline" data-action="new-opening">New opening balance</button><button class="btn btn-outline" data-action="print">Print</button></div>' +
+      '</div></div>';
+  }
+
+  function tableSection(title, rows, totalLabel, total, options) {
+    const opts = options || {};
+    if (!rows.length) return '<tr class="tr-sub"><td colspan="5">' + esc(title) + ' ΓÇö no activity</td></tr>';
+    return '<tr class="tr-sub"><td colspan="5">' + esc(title) + '</td></tr>' +
+      rows.map((row) => '<tr' + (row.synthetic ? ' class="tr-synthetic"' : '') + '><td class="mono">' + esc(row.code || '') + '</td><td class="account-name">' + esc(row.nameWithCode || row.name || '') + (row.synthetic ? ' <span class="pill brand">synthetic</span>' : '') + '</td>' +
+        '<td class="num">' + money(row.debit || 0) + '</td><td class="num">' + money(row.credit || 0) + '</td><td class="num">' + money(opts.amount ? row.amount : row.net) + '</td></tr>').join('') +
+      (totalLabel ? '<tr class="tr-total"><td></td><td>' + esc(totalLabel) + '</td><td></td><td></td><td class="num">' + money(total || 0) + '</td></tr>' : '');
+  }
+
+  function renderTrialBalance() {
+    const result = State.result;
+    const view = $('#view');
+    if (!view || !result) return;
+    const tb = result.trialBalance;
+    view.innerHTML = renderRangeWarning() +
+      '<div class="section-head"><h2>FBR Selected-Transaction Trial Balance</h2><div class="spacer"></div><button class="btn btn-sm btn-outline" data-action="export-tb">CSV</button><button class="btn btn-sm btn-outline" data-action="print">Print</button></div>' +
+      '<p class="sub">' + esc(tb.meta.basis) + '. As of ' + esc(tb.meta.periodTo) + '.</p>' +
+      '<div class="grid cols-3" style="margin-bottom:14px">' + kpi('Total debit', money(tb.totals.debit), '', '') + kpi('Total credit', money(tb.totals.credit), '', '') + kpi('Difference', money(tb.totals.difference), Math.abs(tb.totals.difference) < 0.005 ? 'balanced' : 'not balanced', Math.abs(tb.totals.difference) < 0.005 ? 'good' : 'bad') + '</div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Code</th><th>Account</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Net</th></tr></thead><tbody>' +
+      tb.sections.map((section) => tableSection(section.label, section.rows, section.label + ' total', roundSectionNet(section.rows))).join('') +
+      '<tr class="tr-total"><td></td><td>Grand total</td><td class="num">' + money(tb.totals.debit) + '</td><td class="num">' + money(tb.totals.credit) + '</td><td class="num">' + money(tb.totals.difference) + '</td></tr>' +
+      '</tbody></table></div>';
+  }
+
+  function roundSectionNet(rows) {
+    return E.round2((rows || []).reduce((sum, row) => sum + (row.net || 0), 0));
+  }
+
+  function renderProfitAndLoss() {
+    const result = State.result;
+    const view = $('#view');
+    if (!view || !result) return;
+    const pl = result.profitAndLoss;
+    view.innerHTML = renderRangeWarning() +
+      '<div class="section-head"><h2>FBR Selected-Transaction Profit &amp; Loss</h2><div class="spacer"></div><button class="btn btn-sm btn-outline" data-action="export-pl">CSV</button><button class="btn btn-sm btn-outline" data-action="print">Print</button></div>' +
+      '<p class="sub">For the period ' + esc(pl.meta.periodFrom) + ' to ' + esc(pl.meta.periodTo) + '. Amounts are presented as positive income and positive expense.</p>' +
+      '<div class="table-wrap"><table><thead><tr><th>Code</th><th>Account</th><th class="num">Amount</th></tr></thead><tbody>' +
+      pl.sections.map((section) => {
+        if (!section.rows.length) return '';
+        return '<tr class="tr-sub"><td colspan="3">' + esc(section.label) + '</td></tr>' +
+          section.rows.map((row) => '<tr><td class="mono">' + esc(row.code) + '</td><td class="account-name">' + esc(row.nameWithCode) + '</td><td class="num">' + money(row.amount) + '</td></tr>').join('') +
+          '<tr class="tr-total"><td></td><td>' + esc(section.label) + ' total</td><td class="num">' + money(section.total) + '</td></tr>';
+      }).join('') +
+      '<tr class="tr-total"><td></td><td>Gross profit</td><td class="num">' + money(pl.totals.grossProfit) + '</td></tr>' +
+      '<tr class="tr-total"><td></td><td>Net profit</td><td class="num">' + money(pl.totals.netProfit) + '</td></tr>' +
+      '</tbody></table></div>';
+  }
+
+  function renderBalanceSheet() {
+    const result = State.result;
+    const view = $('#view');
+    if (!view || !result) return;
+    const bs = result.balanceSheet;
+    view.innerHTML = renderRangeWarning() +
+      '<div class="section-head"><h2>FBR Selected-Transaction Balance Sheet</h2><div class="spacer"></div><button class="btn btn-sm btn-outline" data-action="export-bs">CSV</button><button class="btn btn-sm btn-outline" data-action="print">Print</button></div>' +
+      '<p class="sub">As of ' + esc(bs.meta.asOf) + '. Includes FBR activity since ' + esc(bs.meta.fbrStartDate) + ' and explicit opening adjustments.</p>' +
+      '<div class="grid cols-3" style="margin-bottom:14px">' + kpi('Assets', money(bs.totals.assets), '', '') + kpi('Liabilities', money(bs.totals.liabilities), '', '') + kpi('Equity', money(bs.totals.equity), 'includes synthetic FBR results', '') + '</div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Code</th><th>Account</th><th class="num">Amount</th></tr></thead><tbody>' +
+      bs.sections.map((section) => {
+        if (!section.rows.length) return '';
+        return '<tr class="tr-sub"><td colspan="3">' + esc(section.label) + '</td></tr>' +
+          section.rows.map((row) => '<tr' + (row.synthetic ? ' class="tr-synthetic"' : '') + '><td class="mono">' + esc(row.code) + '</td><td class="account-name">' + esc(row.nameWithCode) + (row.synthetic ? ' <span class="pill brand">synthetic</span>' : '') + '</td><td class="num">' + money(row.amount) + '</td></tr>').join('') +
+          '<tr class="tr-total"><td></td><td>' + esc(section.label) + ' total</td><td class="num">' + money(section.total) + '</td></tr>';
+      }).join('') +
+      '<tr class="tr-total"><td></td><td>Liabilities + equity</td><td class="num">' + money(bs.totals.liabilitiesAndEquity) + '</td></tr>' +
+      '<tr class="tr-total"><td></td><td>Difference</td><td class="num">' + money(bs.totals.difference) + '</td></tr>' +
+      '</tbody></table></div>';
+  }
+
+  function docTotalsByKey() {
+    const map = new Map();
+    for (const row of (State.result && State.result.included.rows) || []) {
+      const current = map.get(row.docKey) || { debit: 0, credit: 0, rows: 0 };
+      current.debit += row.debit;
+      current.credit += row.credit;
+      current.rows += 1;
+      map.set(row.docKey, current);
+    }
+    return map;
+  }
+
+  function documentReason(doc, options) {
+    if (!doc) return 'Unknown';
+    if (!doc.date) return 'Missing date';
+    if (doc.date < options.fbrStartDate) return 'Before FBR start';
+    if (doc.date > options.periodTo) return 'After period';
+    if (doc.isForeign) return 'Foreign currency';
+    if (doc.indirect) {
+      const invoice = State.docIndex.byKey.get(doc.linkedInvoiceKey);
+      if (!invoice) return 'Linked invoice not found';
+      if (!invoice.fbr) return 'Linked invoice not tagged';
+    }
+    if (!doc.fbr) return 'Not tagged';
+    return 'Included';
+  }
+
+  function renderDocuments() {
+    const result = State.result;
+    const view = $('#view');
+    if (!view || !result) return;
+    const options = currentOptions();
+    const totals = docTotalsByKey();
+    const includedKeys = new Set(Array.from(totals.keys()));
+    const included = State.docIndex.docs.filter((doc) => includedKeys.has(doc.key)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const excluded = State.docIndex.docs.filter((doc) => !includedKeys.has(doc.key)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    view.innerHTML = renderRangeWarning() +
+      '<div class="section-head"><h2>Documents</h2><div class="spacer"></div><span class="pill brand">' + included.length + ' included</span><span class="pill neutral">' + excluded.length + ' excluded</span></div>' +
+      '<div class="card"><h3>Included in FBR</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Party</th><th class="num">Rows</th><th class="num">Debit</th><th class="num">Credit</th><th>Source</th></tr></thead><tbody>' +
+      (included.length ? included.map((doc) => {
+        const t = totals.get(doc.key) || { rows: 0, debit: 0, credit: 0 };
+        return '<tr><td>' + esc(doc.date) + '</td><td>' + esc(doc.typeLabel) + '</td><td class="mono">' + esc(doc.reference || doc.key.slice(0, 8)) + '</td><td>' + esc(doc.party || '') + '</td><td class="num">' + t.rows + '</td><td class="num">' + money(t.debit) + '</td><td class="num">' + money(t.credit) + '</td><td>' + (doc.indirect ? '<span class="pill warn">via ' + esc((State.docIndex.byKey.get(doc.linkedInvoiceKey) || {}).reference || 'invoice') + '</span>' : '<span class="pill ok">Direct</span>') + '</td></tr>';
+      }).join('') : '<tr><td colspan="8" class="empty"><strong>No tagged documents in range</strong>Tick the FBR checkbox on documents, or widen the date range.</td></tr>') +
+      '</tbody></table></div></div>' +
+      '<div class="card" style="margin-top:14px"><h3>Excluded</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Party</th><th>Reason</th></tr></thead><tbody>' +
+      (excluded.length ? excluded.map((doc) => '<tr><td>' + esc(doc.date || '') + '</td><td>' + esc(doc.typeLabel) + '</td><td class="mono">' + esc(doc.reference || doc.key.slice(0, 8)) + '</td><td>' + esc(doc.party || '') + '</td><td><span class="pill ' + (documentReason(doc, options) === 'Foreign currency' ? 'warn' : 'neutral') + '">' + esc(documentReason(doc, options)) + '</span></td></tr>').join('') : '<tr><td colspan="5" class="empty"><strong>Nothing excluded</strong>All fetched documents are included.</td></tr>') +
+      '</tbody></table></div></div>' +
+      '<div class="card" style="margin-top:14px"><h3>Document types not placed for FBR</h3><p class="sub">These types support custom fields but the FBR checkbox is not placed on them. They are not silently included.</p><div class="table-wrap"><table><thead><tr><th>Type</th><th>Custom fields</th><th>Status</th></tr></thead><tbody>' +
+      State.placement.unplaced.map((type) => '<tr><td>' + esc(type.label) + '</td><td>' + (type.customFields ? 'Yes' : 'No') + '</td><td><span class="pill neutral">Not placed</span></td></tr>').join('') +
+      '</tbody></table></div></div>';
+  }
+
+  function adjustmentTypeLabel(type) {
+    return type === 'opening' ? 'Opening' : type === 'reversal' ? 'Reversal' : 'Adjustment';
+  }
+
+  function adjustmentStatus(adjustment) {
+    if (adjustment.reversedBy) return '<span class="pill warn">Reversed by ' + esc(adjustment.reversedBy) + '</span>';
+    if (adjustment.type === 'reversal') return '<span class="pill neutral">Reversal</span>';
+    if (adjustment.type === 'opening') return '<span class="pill brand">Opening</span>';
+    return '<span class="pill ok">Active</span>';
+  }
+
+  function renderAdjustments() {
+    const view = $('#view');
+    if (!view) return;
+    const rows = State.adjustments.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)));
+    view.innerHTML = '<div class="section-head"><h2>Adjustments</h2><div class="spacer"></div><button class="btn btn-primary" data-action="new-adjustment">New adjustment</button><button class="btn btn-outline" data-action="new-opening">New opening balance</button></div>' +
+      '<p class="sub">Append-only Folder records. To correct an adjustment, create a reversal and then a new adjustment. Existing records are never edited or deleted.</p>' +
+      '<div class="table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Type</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
+      (rows.length ? rows.map((adjustment) => '<tr><td class="mono">' + esc(adjustment.id) + '</td><td>' + esc(adjustment.date) + '</td><td>' + esc(adjustmentTypeLabel(adjustment.type)) + '</td><td>' + esc(adjustment.description || '') + '</td><td class="num">' + money(adjustment.debitTotal) + '</td><td class="num">' + money(adjustment.creditTotal) + '</td><td>' + adjustmentStatus(adjustment) + '</td><td><div class="actions"><button class="btn btn-sm btn-outline" data-action="reverse-adjustment" data-id="' + esc(adjustment.id) + '">Reverse</button><button class="btn btn-sm btn-outline" data-action="duplicate-adjustment" data-id="' + esc(adjustment.id) + '">Duplicate</button><button class="btn btn-sm btn-outline" data-action="view-adjustment" data-id="' + esc(adjustment.id) + '">JSON</button></div></td></tr>').join('') : '<tr><td colspan="8" class="empty"><strong>No adjustments</strong>Add an adjustment or an opening balance to change the FBR reports.</td></tr>') +
+      '</tbody></table></div>' +
+      (State.invalidAdjustments.length ? '<div class="card" style="margin-top:14px"><h3>Invalid adjustment folders</h3><div class="table-wrap"><table><thead><tr><th>Folder</th><th>Description</th><th>Error</th></tr></thead><tbody>' + State.invalidAdjustments.map((item) => '<tr><td class="mono">' + esc(item.folderKey || '') + '</td><td>' + esc(item.description || '') + '</td><td class="small">' + esc(item.error) + '</td></tr>').join('') + '</tbody></table></div></div>' : '');
+  }
+
+  function renderReconciliation() {
+    const result = State.result;
+    const view = $('#view');
+    if (!view || !result) return;
+    const recon = result.reconciliation;
+    const excluded = recon.excluded;
+    view.innerHTML = renderRangeWarning() +
+      '<div class="section-head"><h2>Reconciliation</h2><div class="spacer"></div><span class="pill ' + (result.ok ? 'ok' : 'fail') + '">' + (result.ok ? 'Controls pass' : 'Review controls') + '</span></div>' +
+      '<div class="grid cols-2">' +
+      '<div class="card"><h3>Ledger</h3><div class="table-wrap"><table><tbody>' +
+      '<tr><td>Included GL debit</td><td class="num">' + money(recon.glDebit) + '</td></tr>' +
+      '<tr><td>Included GL credit</td><td class="num">' + money(recon.glCredit) + '</td></tr>' +
+      '<tr><td>Included GL net</td><td class="num">' + money(recon.glNet) + '</td></tr>' +
+      '<tr><td>Adjustment debit</td><td class="num">' + money(recon.adjustmentDebit) + '</td></tr>' +
+      '<tr><td>Adjustment credit</td><td class="num">' + money(recon.adjustmentCredit) + '</td></tr>' +
+      '<tr><td>Trial balance difference</td><td class="num">' + money(recon.trialBalanceDifference) + '</td></tr>' +
+      '</tbody></table></div></div>' +
+      '<div class="card"><h3>Balance sheet</h3><div class="table-wrap"><table><tbody>' +
+      '<tr><td>Assets</td><td class="num">' + money(recon.balanceSheetAssets) + '</td></tr>' +
+      '<tr><td>Liabilities</td><td class="num">' + money(recon.balanceSheetLiabilities) + '</td></tr>' +
+      '<tr><td>Equity</td><td class="num">' + money(recon.balanceSheetEquity) + '</td></tr>' +
+      '<tr><td>Difference</td><td class="num">' + money(recon.balanceSheetDifference) + '</td></tr>' +
+      '<tr><td>Profit &amp; loss net</td><td class="num">' + money(recon.profitAndLossNet) + '</td></tr>' +
+      '</tbody></table></div></div>' +
+      '</div>' +
+      '<div class="card" style="margin-top:14px"><h3>Controls</h3>' + checkList(recon.checks) + '</div>' +
+      '<div class="card" style="margin-top:14px"><h3>Exclusions</h3><div class="table-wrap"><table><thead><tr><th>Category</th><th class="num">Rows</th></tr></thead><tbody>' +
+      '<tr><td>Untagged documents</td><td class="num">' + excluded.untagged + '</td></tr>' +
+      '<tr><td>Foreign currency</td><td class="num">' + excluded.foreign + '</td></tr>' +
+      '<tr><td>Before FBR start</td><td class="num">' + excluded.preStart + '</td></tr>' +
+      '<tr><td>After period</td><td class="num">' + excluded.afterPeriod + '</td></tr>' +
+      '<tr><td>Missing date</td><td class="num">' + excluded.missingDate + '</td></tr>' +
+      '<tr><td>Unresolved source link</td><td class="num">' + excluded.unknownDocument + '</td></tr>' +
+      '<tr><td>Late fee linked to untagged invoice</td><td class="num">' + excluded.linkedInvoiceUntagged + '</td></tr>' +
+      '<tr><td>Late fee with missing invoice</td><td class="num">' + excluded.missingLinkedInvoice + '</td></tr>' +
+      '</tbody></table></div></div>'; 
+  }
+
+  function renderSettings() {
+    const view = $('#view');
+    if (!view) return;
+    const config = State.config || E.defaultConfig();
+    const placement = State.placement;
+    view.innerHTML = '<div class="section-head"><h2>Settings</h2><div class="spacer"></div><span class="pill ' + (State.loaded ? 'ok' : 'neutral') + '">' + (State.loaded ? 'Loaded' : 'Not loaded') + '</span></div>' +
+      '<div class="grid cols-2">' +
+      '<div class="card"><h3>FBR fields</h3><div class="table-wrap"><table><tbody>' +
+      '<tr><td>FBR checkbox</td><td class="mono small">' + esc(State.fbrField ? State.fbrField.key : 'Not found') + '</td></tr>' +
+      '<tr><td>FBR placement</td><td>' + (placement ? placement.placed.length + ' type(s)' : 'ΓÇö') + '</td></tr>' +
+      '<tr><td>FBR Adjustment</td><td class="mono small">' + esc(State.adjustmentField ? State.adjustmentField.key : 'Not found') + '</td></tr>' +
+      '<tr><td>Adjustment field type</td><td>' + (State.adjustmentField ? 'Paragraph text / Large' : 'ΓÇö') + '</td></tr>' +
+      '</tbody></table></div></div>' +
+      '<div class="card"><h3>GL report</h3><div class="table-wrap"><table><tbody>' +
+      '<tr><td>Definition key</td><td class="mono small">' + esc(State.glReportKey || 'Not loaded') + '</td></tr>' +
+      '<tr><td>Loaded range</td><td>' + (State.glRange ? esc(State.glRange.from + ' to ' + State.glRange.to) : 'ΓÇö') + '</td></tr>' +
+      '<tr><td>Rows</td><td>' + (State.glModel && State.glModel.rows ? State.glModel.rows.length : 0) + '</td></tr>' +
+      '</tbody></table></div><div class="actions" style="margin-top:12px"><button class="btn btn-outline" data-action="refresh-gl">Prepare / refresh</button></div></div>' +
+      '</div>' +
+      '<div class="card" style="margin-top:14px"><h3>Configuration</h3><p class="sub">The FBR start date is the beginning of the parallel ledger. Native pre-FBR balances are excluded unless you enter explicit opening adjustments.</p>' +
+      '<div class="grid cols-3">' +
+      '<div class="field"><label for="cfg-start">FBR start date</label><input id="cfg-start" type="date" value="' + esc(config.fbrStartDate || '') + '"></div>' +
+      '<div class="field"><label for="cfg-from">Default period from</label><input id="cfg-from" type="date" value="' + esc(config.defaultPeriodFrom || '') + '"></div>' +
+      '<div class="field"><label for="cfg-to">Default period to</label><input id="cfg-to" type="date" value="' + esc(config.defaultPeriodTo || '') + '"></div>' +
+      '</div>' +
+      '<div class="actions" style="margin-top:12px"><button class="btn btn-primary" data-action="save-config">Save configuration</button><span class="small muted">Creates an FBR-CONFIG Folder record. Existing adjustment records are not changed.</span></div></div>' +
+      '<div class="card" style="margin-top:14px"><h3>Placement status</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>FBR placement</th><th>Custom fields</th><th>Mode</th></tr></thead><tbody>' +
+      placement.placed.map((type) => '<tr><td>' + esc(type.label) + '</td><td><span class="pill ok">Placed</span></td><td>Yes</td><td>Direct</td></tr>').join('') +
+      placement.unplaced.map((type) => '<tr><td>' + esc(type.label) + '</td><td><span class="pill neutral">Not placed</span></td><td>' + (type.customFields ? 'Yes' : 'No') + '</td><td>Excluded</td></tr>').join('') +
+      '</tbody></table></div><p class="small muted" style="margin-top:8px">Late Payment Fee is included indirectly when its linked Sales Invoice is FBR-tagged.</p></div>' +
+      '<div class="card" style="margin-top:14px"><h3>Data tools</h3><div class="actions"><button class="btn btn-outline" data-action="export-backup">Export backup</button><button class="btn btn-outline" data-action="import-backup">Import backup</button><button class="btn btn-outline" data-action="reload-base">Reload base data</button><button class="btn btn-outline" data-action="print">Print</button></div>' +
+      '<p class="small muted" style="margin-top:10px">Backups contain configuration, adjustments and report metadata. They do not contain Manager credentials. Restore previews every adjustment and skips duplicates by ID.</p></div>' +
+      '<div class="card" style="margin-top:14px"><h3>Safety</h3><ul class="list"><li>No journals are posted.</li><li>Existing FBR flags are never edited.</li><li>Adjustments are append-only Folder records.</li><li>No localStorage, cookies or external database.</li><li>Unknown links are excluded and reported, never plugged into suspense.</li></ul></div>';
+  }
+
+  function bindView() {
+    const view = $('#view');
+    if (!view) return;
+    $$('[data-action]', view).forEach((button) => {
+      if (button.dataset.bound) return;
+      button.dataset.bound = '1';
+    });
+  }
+
+  function accountOptions(selected, onlyBS) {
+    const accounts = State.accountIndex ? State.accountIndex.accounts : [];
+    const pl = accounts.filter((account) => account.type === 'PL');
+    const bs = accounts.filter((account) => account.type === 'BS');
+    function option(account) {
+      return '<option value="' + esc(account.key) + '"' + (String(selected || '').toLowerCase() === String(account.key).toLowerCase() ? ' selected' : '') + '>' + esc((account.code ? account.code + ' ┬╖ ' : '') + (account.name || account.nameWithCode || '')) + '</option>';
+    }
+    let html = '<option value="">Select account...</option>';
+    if (!onlyBS && pl.length) html += '<optgroup label="Profit &amp; Loss">' + pl.map(option).join('') + '</optgroup>';
+    if (bs.length) html += '<optgroup label="Balance Sheet">' + bs.map(option).join('') + '</optgroup>';
+    return html;
+  }
+
+  function editorLineRow(line, index, onlyBS) {
+    return '<tr data-line-index="' + index + '"><td><select data-line-field="accountKey">' + accountOptions(line.accountKey, onlyBS) + '</select></td>' +
+      '<td><input class="amount" data-line-field="debit" inputmode="decimal" value="' + esc(line.debit || '') + '" placeholder="0.00"></td>' +
+      '<td><input class="amount" data-line-field="credit" inputmode="decimal" value="' + esc(line.credit || '') + '" placeholder="0.00"></td>' +
+      '<td><input data-line-field="description" value="' + esc(line.description || '') + '" placeholder="Optional line description"></td>' +
+      '<td><button class="btn btn-sm btn-outline" data-action="remove-line" data-index="' + index + '">Remove</button></td></tr>';
+  }
+
+  function renderEditorLines() {
+    const editor = State.editor;
+    if (!editor) return;
+    const onlyBS = editor.type === 'opening';
+    const body = $('#editor-lines');
+    if (body) body.innerHTML = editor.lines.map((line, index) => editorLineRow(line, index, onlyBS)).join('');
+    updateEditorTotals();
+  }
+
+  function updateEditorTotals() {
+    const editor = State.editor;
+    if (!editor) return;
+    const debit = E.round2(editor.lines.reduce((sum, line) => sum + E.num(line.debit), 0));
+    const credit = E.round2(editor.lines.reduce((sum, line) => sum + E.num(line.credit), 0));
+    const difference = E.round2(debit - credit);
+    const target = $('#editor-totals');
+    if (target) {
+      const balanced = Math.abs(difference) < 0.005;
+      target.innerHTML = '<span>Debit <strong>' + money(debit) + '</strong></span><span>Credit <strong>' + money(credit) + '</strong></span><span class="' + (balanced ? 'good' : 'bad') + '">' + (balanced ? 'Balanced' : 'Difference ' + money(difference)) + '</span>' + (editor.type === 'opening' ? '<span class="muted small">Unbalanced opening lines are auto-balanced to ' + esc(E.SYNTHETIC.opening) + '</span>' : '');
+    }
+    const save = $('#editor-save');
+    if (save) save.disabled = !(editor.type === 'opening' || Math.abs(difference) < 0.005);
+  }
+
+  function openAdjustmentEditor(initial) {
+    if (!State.adjustmentField || !State.accountIndex) {
+      toast('Load FBR data first.', 'warn');
+      return;
+    }
+    const first = initial || {};
+    State.editor = {
+      type: first.type || 'adjustment',
+      date: first.date || today(),
+      description: first.description || '',
+      reason: first.reason || '',
+      reverses: first.reverses || null,
+      originalId: first.originalId || null,
+      lines: first.lines && first.lines.length ? clone(first.lines) : [{ accountKey: '', debit: '', credit: '', description: '' }]
+    };
+    const typeChoices = State.editor.type === 'reversal' ? ['reversal', 'adjustment', 'opening'] : ['adjustment', 'opening'];
+    const typeOptions = typeChoices.map((type) => '<option value="' + type + '"' + (State.editor.type === type ? ' selected' : '') + '>' + (type === 'opening' ? 'Opening balance' : type === 'reversal' ? 'Reversal' : 'Adjustment') + '</option>').join('');
+    const body = '<div class="grid cols-2">' +
+      '<div class="field"><label>Type</label><select id="editor-type">' + typeOptions + '</select></div>' +
+      '<div class="field"><label>Date</label><input id="editor-date" type="date" value="' + esc(State.editor.date) + '"></div>' +
+      '<div class="field"><label>Description</label><input id="editor-description" value="' + esc(State.editor.description) + '" placeholder="What this adjustment does"></div>' +
+      '<div class="field"><label>Reason / reference</label><input id="editor-reason" value="' + esc(State.editor.reason) + '" placeholder="Optional audit note"></div>' +
+      '</div>' +
+      (State.editor.reverses ? '<div class="banner warn" style="margin:14px 0 0"><div class="banner-icon">R</div><div><h3>Reversal of ' + esc(State.editor.reverses) + '</h3><p>This creates a new reversal record. The original adjustment is not edited or deleted.</p></div></div>' : '') +
+      '<div class="table-wrap" style="margin-top:14px"><table class="editor-lines"><thead><tr><th style="min-width:230px">Account</th><th style="width:120px">Debit</th><th style="width:120px">Credit</th><th>Description</th><th></th></tr></thead><tbody id="editor-lines"></tbody></table></div>' +
+      '<div class="actions" style="margin-top:10px"><button class="btn btn-sm btn-outline" data-action="add-line">Add line</button></div>' +
+      '<div id="editor-totals" class="line-total"></div>' +
+      '<p class="small muted" style="margin-top:8px">Opening adjustments may only use balance sheet accounts. Any difference is automatically balanced to ' + esc(E.SYNTHETIC.opening) + '. Normal adjustments must balance.</p>';
+    openModal(State.editor.type === 'reversal' ? 'Reverse adjustment' : State.editor.type === 'opening' ? 'New opening balance' : 'New adjustment', body, [
+      { label: 'Cancel', className: 'btn-outline', action: 'close-modal' },
+      { label: 'Save adjustment', className: 'btn-primary', action: 'save-editor', disabled: false }
+    ], { small: false });
+    renderEditorLines();
+    bindEditor();
+  }
+
+  function bindEditor() {
+    const type = $('#editor-type');
+    if (type) {
+      type.addEventListener('change', () => {
+        State.editor.type = type.value;
+        if (State.editor.type === 'opening') {
+          State.editor.lines = State.editor.lines.map((line) => {
+            const account = State.accountIndex.byKey.get(String(line.accountKey || '').toLowerCase());
+            return account && account.type === 'PL' ? { accountKey: '', debit: '', credit: '', description: line.description } : line;
+          });
+        }
+        renderEditorLines();
+      });
+    }
+    const date = $('#editor-date');
+    if (date) date.addEventListener('input', () => { State.editor.date = date.value; });
+    const description = $('#editor-description');
+    if (description) description.addEventListener('input', () => { State.editor.description = description.value; });
+    const reason = $('#editor-reason');
+    if (reason) reason.addEventListener('input', () => { State.editor.reason = reason.value; });
+    const body = $('#editor-lines');
+    if (body) {
+      body.addEventListener('input', (event) => {
+        const field = event.target.closest('[data-line-field]');
+        if (!field) return;
+        const row = field.closest('[data-line-index]');
+        if (!row) return;
+        const index = Number(row.getAttribute('data-line-index'));
+        const key = field.getAttribute('data-line-field');
+        if (!State.editor.lines[index]) return;
+        State.editor.lines[index][key] = field.value;
+        updateEditorTotals();
+      });
+      body.addEventListener('change', (event) => {
+        const field = event.target.closest('[data-line-field]');
+        if (!field) return;
+        const row = field.closest('[data-line-index]');
+        if (!row) return;
+        const index = Number(row.getAttribute('data-line-index'));
+        const key = field.getAttribute('data-line-field');
+        if (!State.editor.lines[index]) return;
+        State.editor.lines[index][key] = field.value;
+        updateEditorTotals();
+      });
+    }
+  }
+
+  function readEditor() {
+    const editor = State.editor;
+    const lines = editor.lines.map((line) => ({
+      accountKey: line.accountKey,
+      accountName: (State.accountIndex.byKey.get(String(line.accountKey || '').toLowerCase()) || {}).nameWithCode || '',
+      debit: E.round2(line.debit),
+      credit: E.round2(line.credit),
+      description: line.description || ''
+    }));
+    const prefix = editor.type === 'opening' ? 'OPEN' : editor.type === 'reversal' ? 'REV' : 'ADJ';
+    return {
+      schemaVersion: E.SCHEMA_VERSION,
+      id: E.nextAdjustmentId(State.adjustments, prefix),
+      type: editor.type,
+      date: editor.date,
+      description: editor.description,
+      reason: editor.reason,
+      reverses: editor.reverses,
+      operator: 'unverified',
+      lines: lines
+    };
+  }
+
+  function confirmAction(title, message, actionLabel, action) {
+    openModal(title, '<p>' + esc(message) + '</p>', [
+      { label: 'Cancel', className: 'btn-outline', action: 'close-modal' },
+      { label: actionLabel, className: 'btn-primary', action: action }
+    ], { small: true });
+  }
+
+  function handleSaveEditor() {
+    if (!State.editor) return;
+    const raw = readEditor();
+    const validation = E.validateAdjustment(raw, State.accountIndex);
+    if (validation.errors.length) {
+      toast(validation.errors.join(' '), 'bad');
+      return;
+    }
+    confirmAction('Save ' + raw.id + '?', 'This creates a new append-only Folder record. It will change the FBR reports immediately. No Manager journal is posted.', 'Save ' + raw.id, 'confirm-save-editor');
+  }
+
+  async function confirmSaveEditor() {
+    const raw = readEditor();
+    const validation = E.validateAdjustment(raw, State.accountIndex);
+    if (validation.errors.length) {
+      closeModal();
+      toast(validation.errors.join(' '), 'bad');
+      return;
+    }
+    closeModal();
+    const saved = await saveAdjustment(validation.adjustment);
+    if (saved) {
+      State.editor = null;
+    }
+  }
+
+  function openAdjustmentJson(id) {
+    const adjustment = State.adjustments.find((item) => item.id === id);
+    if (!adjustment) return;
+    openModal('Adjustment ' + id, '<pre class="code-box">' + esc(JSON.stringify(cleanAdjustment(adjustment), null, 2)) + '</pre>', [
+      { label: 'Close', className: 'btn-outline', action: 'close-modal' }
+    ]);
+  }
+
+  function handleGlobalAction(action, element) {
+    if (action === 'close-modal') { closeModal(); return; }
+    if (action === 'help') { openHelp(); return; }
+    if (action === 'print') { window.print(); return; }
+    if (action === 'load-data') { handleLoadData(); return; }
+    if (action === 'reload-base') { loadBaseData(); return; }
+    if (action === 'refresh-gl') { handleRefreshGl(); return; }
+    if (action === 'go-reconciliation') { State.tab = 'reconciliation'; renderAll(); return; }
+    if (action === 'new-adjustment') { openAdjustmentEditor({ type: 'adjustment' }); return; }
+    if (action === 'new-opening') { openAdjustmentEditor({ type: 'opening', date: (State.config && State.config.fbrStartDate) || today(), description: 'Opening balance at FBR start' }); return; }
+    if (action === 'add-line') {
+      if (!State.editor) return;
+      State.editor.lines.push({ accountKey: '', debit: '', credit: '', description: '' });
+      renderEditorLines();
+      return;
+    }
+    if (action === 'remove-line') {
+      if (!State.editor) return;
+      const index = Number(element.getAttribute('data-index'));
+      State.editor.lines.splice(index, 1);
+      if (!State.editor.lines.length) State.editor.lines.push({ accountKey: '', debit: '', credit: '', description: '' });
+      renderEditorLines();
+      return;
+    }
+    if (action === 'save-editor') { handleSaveEditor(); return; }
+    if (action === 'confirm-save-editor') { confirmSaveEditor(); return; }
+    if (action === 'confirm-refresh-gl') { confirmRefreshGl(); return; }
+    if (action === 'confirm-save-config') { confirmSaveConfig(); return; }
+    if (action === 'reverse-adjustment') {
+      const id = element.getAttribute('data-id');
+      const original = State.adjustments.find((item) => item.id === id);
+      if (!original) return;
+      openAdjustmentEditor({
+        type: 'reversal',
+        date: today(),
+        description: 'Reversal of ' + original.id + (original.description ? ' - ' + original.description : ''),
+        reason: 'Reverses ' + original.id,
+        reverses: original.id,
+        originalId: original.id,
+        lines: original.lines.map((line) => ({
+          accountKey: line.accountKey,
+          debit: line.credit,
+          credit: line.debit,
+          description: 'Reversal' + (line.description ? ': ' + line.description : '')
+        }))
+      });
+      return;
+    }
+    if (action === 'duplicate-adjustment') {
+      const id = element.getAttribute('data-id');
+      const original = State.adjustments.find((item) => item.id === id);
+      if (!original) return;
+      openAdjustmentEditor({
+        type: original.type === 'opening' ? 'opening' : 'adjustment',
+        date: today(),
+        description: 'Copy of ' + original.id + (original.description ? ' - ' + original.description : ''),
+        reason: 'Duplicated from ' + original.id,
+        lines: original.lines.map((line) => ({ accountKey: line.accountKey, debit: line.debit, credit: line.credit, description: line.description }))
+      });
+      return;
+    }
+    if (action === 'view-adjustment') { openAdjustmentJson(element.getAttribute('data-id')); return; }
+    if (action === 'save-config') { handleSaveConfig(); return; }
+    if (action === 'export-backup') { exportBackup(); return; }
+    if (action === 'import-backup') { openBackupImport(); return; }
+    if (action === 'restore-backup') { restoreBackup(); return; }
+    if (action === 'export-tb') { downloadText('fbr-trial-balance-' + today() + '.csv', E.trialBalanceCsv(State.result)); return; }
+    if (action === 'export-pl') { downloadText('fbr-profit-loss-' + today() + '.csv', E.reportCsv(State.result)); return; }
+    if (action === 'export-bs') { downloadText('fbr-balance-sheet-' + today() + '.csv', E.balanceSheetCsv(State.result)); return; }
+  }
+
+  function handleLoadData() {
+    if (!State.loaded) { loadBaseData(); return; }
+    if (!State.glModel) {
+      confirmAction('Prepare the GL report?', 'This creates or reuses a reporting-only General Ledger Transactions definition for the selected FBR range, then loads its view. No journals are posted. Existing FBR flags and documents are not changed.', 'Prepare and load', 'confirm-refresh-gl');
+      return;
+    }
+    const options = currentOptions();
+    if (!glRangeCovers(options)) {
+      handleRefreshGl();
+      return;
+    }
+    recompute();
+    renderAll();
+    toast('Reports refreshed from the loaded GL view.', 'ok');
+  }
+
+  function handleRefreshGl() {
+    if (!State.loaded) { toast('Load base data first.', 'warn'); return; }
+    const action = State.glModel ? 'Refresh GL report' : 'Prepare GL report';
+    confirmAction(action + '?', 'This creates or reuses a reporting-only General Ledger Transactions definition for ' + currentOptions().fbrStartDate + ' to ' + currentOptions().periodTo + '. It does not post journals or change documents.', action, 'confirm-refresh-gl');
+  }
+
+  async function confirmRefreshGl() {
+    closeModal();
+    try {
+      await ensureGlReport();
+      toast('GL report loaded.', 'ok');
+    } catch (error) {
+      toast('Could not load GL report: ' + error.message, 'bad');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveConfig() {
+    const start = $('#cfg-start') && $('#cfg-start').value;
+    const from = $('#cfg-from') && $('#cfg-from').value;
+    const to = $('#cfg-to') && $('#cfg-to').value;
+    if (!start) { toast('FBR start date is required.', 'bad'); return; }
+    const config = E.buildConfig({
+      fbrStartDate: start,
+      defaultPeriodFrom: from || start,
+      defaultPeriodTo: to || today(),
+      includeForeign: false,
+      operator: 'unverified',
+      glReportKey: State.config && State.config.glReportKey,
+      glRange: State.config && State.config.glRange
+    });
+    confirmAction('Save FBR configuration?', 'This creates or updates an FBR-CONFIG Folder record. It does not change any adjustment or document.', 'Save configuration', 'confirm-save-config');
+    State.pendingConfig = config;
+  }
+
+  async function confirmSaveConfig() {
+    const config = State.pendingConfig;
+    closeModal();
+    if (!config) return;
+    const ok = await saveConfig(config);
+    if (ok) {
+      State.config = E.parseConfigFolder(State.folders, State.adjustmentField.key) || config;
+      applyConfigToInputs();
+      recompute();
+      renderAll();
+    }
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'manager-context' && event.data.payload) {
+      const origin = event.origin && event.origin !== 'null' ? event.origin : null;
+      if (managerOrigin && origin !== managerOrigin) return;
+      managerOrigin = origin;
+      State.origin = origin;
+      State.context = event.data.payload;
+      setConnection('ok', 'Connected: Manager');
+      if (!State.loaded && !State.loading) loadBaseData();
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    const tab = event.target.closest('[data-tab]');
+    if (tab) {
+      State.tab = tab.getAttribute('data-tab');
+      renderAll();
+      return;
+    }
+    const actionElement = event.target.closest('[data-action]');
+    if (actionElement) {
+      event.preventDefault();
+      handleGlobalAction(actionElement.getAttribute('data-action'), actionElement);
+      return;
+    }
+    if (event.target.classList && event.target.classList.contains('modal-backdrop')) closeModal();
+  });
+
+  document.addEventListener('change', (event) => {
+    if (event.target && event.target.id === 'editor-type') {
+      State.editor.type = event.target.value;
+      renderEditorLines();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeModal();
+  });
+
+  ['fbr-start', 'period-from', 'period-to'].forEach((id) => {
+    const input = document.getElementById(id);
+    if (input) input.addEventListener('change', () => {
+      if (State.loaded) {
+        recompute();
+        renderAll();
+      }
+    });
+  });
+
+  renderAll();
+  setConnection('', 'Waiting for Manager...');
+})();
+</script>
+</body>
+</html>
