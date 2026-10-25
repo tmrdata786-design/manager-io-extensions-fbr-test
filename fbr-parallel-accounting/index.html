@@ -492,7 +492,7 @@ tr:last-child td { border-bottom: 0; }
   async function fetchAllPages(endpoint, options) {
     const opts = options || {};
     const pageSize = opts.pageSize || 2000;
-    let base = endpoint.startsWith('/api2/') || endpoint.startsWith('/api2/') ? endpoint : '/api2/' + endpoint;
+    let base = endpoint.startsWith('/api2/') ? endpoint : '/api2/' + endpoint;
     const collected = [];
     const seen = new Set();
     let skip = 0;
@@ -530,7 +530,14 @@ tr:last-child td { border-bottom: 0; }
         skip += pageSize;
         token = null;
       } else {
-        break;
+        // Stop only when this page added zero new unique keys
+        const newUniqueInPage = items.filter((it) => {
+          const k = E.itemKey(it);
+          return k && !seen.has(String(k).toLowerCase());
+        }).length;
+        if (newUniqueInPage === 0) break;
+        skip += pageSize;
+        token = null;
       }
       pages += 1;
     }

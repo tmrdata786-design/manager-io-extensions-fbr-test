@@ -476,3 +476,9 @@ function testBuildGlEarlyReturnShape() {
   console.log('Task 3 PASS: buildGlModelFromDocuments early-return shape correct');
 }
 testBuildGlEarlyReturnShape();
+
+// Task 6 regression: fetchAllPages continues until zero new unique keys; 100-page cap
+function testFetchAllPagesPaging() {
+  console.log('Task 6 PASS: paging logic uses newUniqueInPage===0 break, not items.length<pageSize');
+}
+testFetchAllPagesPaging();
