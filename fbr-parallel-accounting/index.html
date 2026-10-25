@@ -669,12 +669,18 @@ tr:last-child td { border-bottom: 0; }
     State.error = null;
     State.warnings = [];
     setBusy(true, 'Reading FBR fields', 'Custom fields and placement');
-    // Safe diagnostic: standalone GitHub Pages lacks Manager.io embedded context
-    if (!State.context || !State.context.apiEndpoint) {
-      State.error = 'Not running inside Manager.io. Open this extension via Manager.io > Extensions > FBR Parallel Accounting, or install it from your test repo URL in the Extensions settings. Direct GitHub Pages access cannot reach Manager.io sessions.';
+    // Safe diagnostic: identify exactly which embedded step is missing
+    const hasParent = typeof window.parent !== 'undefined' && window.parent !== window;
+    const hasContext = !!(State.context && State.context.apiEndpoint);
+    if (!hasContext) {
+      const reasons = [];
+      if (!hasParent) reasons.push('no parent iframe (standalone page)');
+      if (!State.context) reasons.push('no State.context');
+      else if (!State.context.apiEndpoint) reasons.push('context missing apiEndpoint');
+      State.error = 'Embedded Manager.io context missing (' + reasons.join(', ') + '). Open via Manager.io > Extensions > FBR Parallel Accounting (test repo URL: https://github.com/tmrdata786-design/manager-io-extensions-fbr-test).';
       State.loading = false;
       setBusy(false);
-      setConnection('warn', 'Not embedded');
+      setConnection('warn', 'Not embedded: ' + reasons.join('; '));
       toast(State.error, 'warn');
       renderWelcome();
       return;
