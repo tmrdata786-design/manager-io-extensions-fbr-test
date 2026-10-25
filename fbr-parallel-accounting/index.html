@@ -1236,7 +1236,7 @@ tr:last-child td { border-bottom: 0; }
     setBusy(true, 'Saving FBR configuration', 'Folder record');
     try {
       let updated = false;
-      if (State.config && State.config.folderKey) {
+      if (State.config && State.config.folderKey) { console.log("Using existing folderKey", State.config.folderKey);
         updated = await updateFolder(State.config.folderKey, E.configFolderBody(config, State.adjustmentField.key));
       }
       if (!updated) await createFolder(E.configFolderBody(config, State.adjustmentField.key));
