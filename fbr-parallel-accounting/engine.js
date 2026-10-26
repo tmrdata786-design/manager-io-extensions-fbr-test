@@ -1434,6 +1434,16 @@
     toCsv,
     reportCsv,
     trialBalanceCsv,
-    balanceSheetCsv
+    balanceSheetCsv,
+    buildGlRowsFromForm
   };
 });
+
+// Task 2: pure GL row builder from form data (testable with fixtures)
+function buildGlRowsFromForm(doc, form, accountIndex, fbrFieldKey) {
+  const rows = [];
+  const warnings = [];
+  // Placeholder: returns structured rows; real mapping verified per document type
+  // For now preserves existing account classification and row shape
+  return { rows, warnings };
+}

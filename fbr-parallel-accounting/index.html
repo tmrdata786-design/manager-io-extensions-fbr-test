@@ -301,6 +301,38 @@ tr:last-child td { border-bottom: 0; }
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="./engine.js"></script>
 <script>
+// Task 7 FIX: handshake buffer that actually initializes context
+(function(){
+  function initFromContext(payload, origin) {
+    if (!payload) return;
+    window.State = window.State || {};
+    window.State.context = payload;
+    // Trigger loadBaseData once State is fully defined (after IIFE)
+    if (window.loadBaseData && window.State && !window.State.loaded && !window.State.loading) {
+      window.loadBaseData();
+    } else {
+      window.__pendingInit = true;
+    }
+  }
+  function bufHandler(e){
+    if (e.data && e.data.type === 'manager-context' && e.data.payload){
+      const origin = e.origin && e.origin !== 'null' ? e.origin : null;
+      if (origin) window.__managerTargetOrigin = origin;
+      initFromContext(e.data.payload, origin);
+    }
+  }
+  window.addEventListener('message', bufHandler);
+  // Standalone detection
+  if (window.parent === window) {
+    // Standalone; diagnostic in loadBaseData will show message
+  } else if (!window.__managerProbeSent) {
+    window.__managerProbeSent = true;
+    const origin = (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) || (document.referrer ? new URL(document.referrer).origin : null) || '*';
+    window.parent.postMessage({ type: 'api-request', method: 'GET', path: '/api2/business-details', body: null, requestId: 'probe-1' }, origin);
+  }
+})();
+</script>
+<script>
 (function () {
   'use strict';
 
@@ -347,6 +379,14 @@ tr:last-child td { border-bottom: 0; }
     backupPreview: null,
     pendingConfig: null
   };
+
+  // Initialize context from inline script buffer (Task 7 fix)
+  if (window.__managerContextBuffer) {
+    State.context = window.__managerContextBuffer;
+    State.origin = window.__managerTargetOrigin || null;
+    if (State.origin) managerOrigin = State.origin;
+    window.__managerContextBuffer = null; // consume
+  }
 
   let managerOrigin = null;
 
@@ -425,6 +465,8 @@ tr:last-child td { border-bottom: 0; }
     assertSafePath(path);
     const ctx = State.context;
     if (!ctx || !ctx.apiEndpoint || !ctx.apiAccessToken) throw new Error('Manager context is not available');
+    const endpointOrigin = new URL(ctx.apiEndpoint).origin;
+    if (State.origin && endpointOrigin && endpointOrigin !== State.origin) throw new Error('Manager endpoint origin mismatch');
     const base = String(ctx.apiEndpoint).replace(/\/+$/, '');
     const url = base + (path.startsWith('/') ? path : '/' + path);
     const opts = {
@@ -455,6 +497,12 @@ tr:last-child td { border-bottom: 0; }
         return await directFetch(method, path, body);
       } catch (err) {
         if (options.noFallback) throw err;
+        // Fall back to bridge only on network errors (TypeError), not HTTP 4xx/5xx
+        if (err && err.name === 'TypeError') {
+          // network failure; fall through to bridge
+        } else {
+          throw err;
+        }
       }
     }
     return postMessageWithResponse({ type: 'api-request', method: method, path: path, body: body }, options.timeoutMs || 60000);
@@ -492,7 +540,7 @@ tr:last-child td { border-bottom: 0; }
   async function fetchAllPages(endpoint, options) {
     const opts = options || {};
     const pageSize = opts.pageSize || 2000;
-    let base = endpoint.startsWith('/api2/') || endpoint.startsWith('/api2/') ? endpoint : '/api2/' + endpoint;
+    let base = endpoint.startsWith('/api2/') ? endpoint : '/api2/' + endpoint;
     const collected = [];
     const seen = new Set();
     let skip = 0;
@@ -530,7 +578,14 @@ tr:last-child td { border-bottom: 0; }
         skip += pageSize;
         token = null;
       } else {
-        break;
+        // Stop only when this page added zero new unique keys
+        const newUniqueInPage = items.filter((it) => {
+          const k = E.itemKey(it);
+          return k && !seen.has(String(k).toLowerCase());
+        }).length;
+        if (newUniqueInPage === 0) break;
+        skip += pageSize;
+        token = null;
       }
       pages += 1;
     }
@@ -810,26 +865,8 @@ tr:last-child td { border-bottom: 0; }
     return !!(range && range.from && range.to && range.from <= from && range.to >= to);
   }
 
-  async function createGlDefinition(description, from, to) {
-    const formBody = {
-      Description: description,
-      FromDate: from + 'T00:00:00',
-      ToDate: to + 'T00:00:00',
-      Account: null
-    };
-    let response;
-    try {
-      response = await apiCall('POST', '/api2/general-ledger-transactions-form', formBody, { timeoutMs: 60000 });
-    } catch (error) {
-      if (!isNotFound(error)) throw error;
-      response = await apiCall('POST', '/api2/general-ledger-transactions', {
-        value: { description: description, fromDate: from, toDate: to, account: null }
-      }, { timeoutMs: 60000 });
-    }
-    const key = unwrapKey(response);
-    if (!key) throw new Error('Manager did not return a key for the new GL report definition.');
-    return key;
-  }
+  // Task 5: GL definition writes removed (form-derived path only; endpoint unavailable on this server)
+  async function createGlDefinition() { throw new Error('GL definition creation disabled — end-point not verified on this server'); }
 
   async function ensureGlReport() {
     const options = currentOptions();
@@ -861,13 +898,7 @@ tr:last-child td { border-bottom: 0; }
       key = definition && (definition.key || definition.Key) || null;
     }
 
-    if (!key) {
-      setBusy(true, 'Creating GL report definition', 'Reporting definition only');
-      key = await createGlDefinition(description, wantedFrom, wantedTo);
-      created = true;
-    }
-
-    // Build GL model from FBR-tagged document forms (view endpoint not available on this server version)
+    // Build GL model from verified FBR-tagged document forms only (definition endpoint unavailable)
     setBusy(true, 'Building GL model from documents', 'Fetching full forms for FBR-tagged transactions');
     const glBuildResult = await buildGlModelFromDocuments(wantedFrom, wantedTo);
     const model = glBuildResult.model;
@@ -877,21 +908,7 @@ tr:last-child td { border-bottom: 0; }
     State.glRange = { from: wantedFrom, to: wantedTo };
     State.glModel = model;
 
-    const storedKey = State.config && State.config.glReportKey;
-    const storedRange = State.config && State.config.glRange;
-    if (created || storedKey !== key || !rangeCovers(storedRange, wantedFrom, wantedTo)) {
-      const nextConfig = E.buildConfig({
-        fbrStartDate: options.fbrStartDate,
-        defaultPeriodFrom: options.fbrStartDate,
-        defaultPeriodTo: options.periodTo,
-        includeForeign: false,
-        operator: 'unverified',
-        glReportKey: key,
-        glRange: { from: wantedFrom, to: wantedTo }
-      });
-      const saved = await saveConfig(nextConfig, true);
-      if (!saved) State.warnings.push('Could not store the GL report key in FBR-CONFIG.');
-    }
+    // Only write FBR-CONFIG when user explicitly saves (not on each GL build)
     recompute();
     // Merge form fetch warnings into result so they appear in dashboard/reconciliation
     if (formFetchWarnings.length > 0) {
@@ -901,7 +918,7 @@ tr:last-child td { border-bottom: 0; }
   }
 
   async function buildGlModelFromDocuments(from, to) {
-    if (!State.docIndex || !State.accountIndex) return { rows: [] };
+    if (!State.docIndex || !State.accountIndex) return { model: { rows: [] }, warnings: [] };
     const docIndex = State.docIndex;
     const accountIndex = State.accountIndex;
     const accountGroups = new Map();
@@ -975,11 +992,9 @@ tr:last-child td { border-bottom: 0; }
 
         // Check FBR checkbox on the form (authoritative source)
         const formFbr = E.readCheckbox(form, State.fbrField.key);
-        if (!formFbr) continue; // Skip if not FBR-tagged on the form
-
-        // Update docIndex with authoritative FBR value so computeReports includes this document
+        // Update docIndex with authoritative FBR value (true OR false)
         const docInIndex = docIndex.byKey.get(doc.key);
-        if (docInIndex) docInIndex.fbr = true;
+        if (docInIndex) docInIndex.fbr = !!formFbr;
 
         // Process based on document type
         if (type.key === 'receipt' || type.key === 'payment' || type.key === 'expense-claim') {
@@ -1015,7 +1030,7 @@ tr:last-child td { border-bottom: 0; }
             }
 
             const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-            addGlLine(doc, line, accountKey, accountName, accountType, debit, credit, desc);
+            addGlLine(doc, accountKey, accountName, accountType, debit, credit, desc);
           }
         } else if (type.key === 'inter-account-transfer') {
           // Inter Account Transfer has PaidFrom (credit), ReceivedIn (debit), CreditAmount/DebitAmount
@@ -1033,7 +1048,7 @@ tr:last-child td { border-bottom: 0; }
               }
               if (!accountKey) accountName = paidFromId || 'Paid From Account';
               const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-              addGlLine(doc, null, accountKey, accountName, accountType, 0, amount, desc);
+              addGlLine(doc, accountKey, accountName, accountType, 0, amount, desc);
             }
 
             // ReceivedIn account: DEBIT (money entering)
@@ -1045,7 +1060,7 @@ tr:last-child td { border-bottom: 0; }
               }
               if (!accountKey) accountName = receivedInId || 'Received In Account';
               const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-              addGlLine(doc, null, accountKey, accountName, accountType, amount, 0, desc);
+              addGlLine(doc, accountKey, accountName, accountType, amount, 0, desc);
             }
           }
         } else if (type.key === 'journal-entry') {
@@ -1065,7 +1080,7 @@ tr:last-child td { border-bottom: 0; }
             if (!accountKey) accountName = accountId || 'Unknown Account';
 
             const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-            addGlLine(doc, line, accountKey, accountName, accountType, debit, credit, desc);
+            addGlLine(doc, accountKey, accountName, accountType, debit, credit, desc);
           }
         } else {
           // Sales Invoice, Purchase Invoice, Credit Note, Debit Note - have Lines with Debit/Credit
@@ -1084,7 +1099,7 @@ tr:last-child td { border-bottom: 0; }
             if (!accountKey) accountName = accountId || 'Unknown Account';
 
             const desc = doc.date + ' - ' + doc.typeLabel + ' ' + (doc.reference || doc.key.slice(0, 8));
-            addGlLine(doc, line, accountKey, accountName, accountType, debit, credit, desc);
+            addGlLine(doc, accountKey, accountName, accountType, debit, credit, desc);
           }
         }
       }
@@ -1119,7 +1134,7 @@ tr:last-child td { border-bottom: 0; }
         if (!accountKey) accountName = 'Late Payment Fee Income';
 
         const desc = fee.date + ' - ' + fee.typeLabel + ' ' + (fee.reference || fee.key.slice(0, 8));
-        addGlLine(fee, line, accountKey, accountName, accountType, amount, 0, desc);
+        addGlLine(fee, accountKey, accountName, accountType, amount, 0, desc);
       }
     }
 
@@ -1240,7 +1255,7 @@ tr:last-child td { border-bottom: 0; }
     setBusy(true, 'Saving FBR configuration', 'Folder record');
     try {
       let updated = false;
-      if (State.config && State.config.folderKey) {
+      if (State.config && State.config.folderKey) { console.log("Using existing folderKey", State.config.folderKey);
         updated = await updateFolder(State.config.folderKey, E.configFolderBody(config, State.adjustmentField.key));
       }
       if (!updated) await createFolder(E.configFolderBody(config, State.adjustmentField.key));
@@ -1414,7 +1429,7 @@ tr:last-child td { border-bottom: 0; }
     const root = $('#modal-root');
     const width = options && options.small ? ' small' : '';
     root.innerHTML = '<div class="modal-backdrop open"><div class="modal' + width + '">' +
-      '<div class="modal-head"><h2>' + esc(title) + '</h2><button class="x" data-action="close-modal" aria-label="Close">├ù</button></div>' +
+      '<div class="modal-head"><h2>' + esc(title) + '</h2><button class="x" data-action="close-modal" aria-label="Close">\u00D7</button></div>' +
       '<div class="modal-body">' + body + '</div>' +
       '<div class="modal-foot">' + (actions || []).map((action) =>
         '<button class="btn ' + esc(action.className || 'btn-outline') + '" data-action="' + esc(action.action || '') + '"' + (action.disabled ? ' disabled' : '') + '>' + esc(action.label) + '</button>'
@@ -1486,7 +1501,6 @@ tr:last-child td { border-bottom: 0; }
     };
     const render = views[State.tab] || renderDashboard;
     render();
-    bindView();
   }
 
   function renderWelcome() {
@@ -1517,7 +1531,7 @@ tr:last-child td { border-bottom: 0; }
 
   function checkList(checks) {
     return '<div class="checks">' + (checks || []).map((check) =>
-      '<div class="check"><div class="check-icon ' + esc(check.status) + '">' + (check.status === 'pass' ? 'Γ£ô' : check.status === 'fail' ? '!' : 'i') + '</div>' +
+      '<div class="check"><div class="check-icon ' + esc(check.status) + '">' + (check.status === 'pass' ? '\u2713' : check.status === 'fail' ? '!' : 'i') + '</div>' +
       '<div><div class="check-title">' + esc(check.label) + '</div><div class="check-detail">' + esc(check.detail) + '</div></div>' + statusPill(check.status) + '</div>'
     ).join('') + '</div>';
   }
@@ -1537,7 +1551,7 @@ tr:last-child td { border-bottom: 0; }
     const bsDiff = result.balanceSheet.totals.difference;
     const warningCount = result.warnings.length;
     view.innerHTML = renderRangeWarning() +
-      '<div class="section-head"><h2>Dashboard</h2><span class="muted small">' + esc(State.businessName) + ' ┬╖ ' + esc(options.fbrStartDate) + ' to ' + esc(options.periodTo) + '</span><div class="spacer"></div><span class="pill ' + (result.ok ? 'ok' : 'fail') + '">' + (result.ok ? 'Controls pass' : 'Review controls') + '</span></div>' +
+      '<div class="section-head"><h2>Dashboard</h2><span class="muted small">' + esc(State.businessName) + ' \u00B7 ' + esc(options.fbrStartDate) + ' to ' + esc(options.periodTo) + '</span><div class="spacer"></div><span class="pill ' + (result.ok ? 'ok' : 'fail') + '">' + (result.ok ? 'Controls pass' : 'Review controls') + '</span></div>' +
       '<div class="grid cols-4">' +
       kpi('Tagged documents', String(includedDocs), 'with posted GL rows', '') +
       kpi('GL rows included', String(result.included.rows.length), 'debit ' + money(result.included.debit) + ' / credit ' + money(result.included.credit), '') +
@@ -1564,7 +1578,7 @@ tr:last-child td { border-bottom: 0; }
 
   function tableSection(title, rows, totalLabel, total, options) {
     const opts = options || {};
-    if (!rows.length) return '<tr class="tr-sub"><td colspan="5">' + esc(title) + ' ΓÇö no activity</td></tr>';
+    if (!rows.length) return '<tr class="tr-sub"><td colspan="5">' + esc(title) + ' \u2014 no activity</td></tr>';
     return '<tr class="tr-sub"><td colspan="5">' + esc(title) + '</td></tr>' +
       rows.map((row) => '<tr' + (row.synthetic ? ' class="tr-synthetic"' : '') + '><td class="mono">' + esc(row.code || '') + '</td><td class="account-name">' + esc(row.nameWithCode || row.name || '') + (row.synthetic ? ' <span class="pill brand">synthetic</span>' : '') + '</td>' +
         '<td class="num">' + money(row.debit || 0) + '</td><td class="num">' + money(row.credit || 0) + '</td><td class="num">' + money(opts.amount ? row.amount : row.net) + '</td></tr>').join('') +
@@ -1753,13 +1767,13 @@ tr:last-child td { border-bottom: 0; }
       '<div class="grid cols-2">' +
       '<div class="card"><h3>FBR fields</h3><div class="table-wrap"><table><tbody>' +
       '<tr><td>FBR checkbox</td><td class="mono small">' + esc(State.fbrField ? State.fbrField.key : 'Not found') + '</td></tr>' +
-      '<tr><td>FBR placement</td><td>' + (placement ? placement.placed.length + ' type(s)' : 'ΓÇö') + '</td></tr>' +
+      '<tr><td>FBR placement</td><td>' + (placement ? placement.placed.length + ' type(s)' : '\u2014') + '</td></tr>' +
       '<tr><td>FBR Adjustment</td><td class="mono small">' + esc(State.adjustmentField ? State.adjustmentField.key : 'Not found') + '</td></tr>' +
-      '<tr><td>Adjustment field type</td><td>' + (State.adjustmentField ? 'Paragraph text / Large' : 'ΓÇö') + '</td></tr>' +
+      '<tr><td>Adjustment field type</td><td>' + (State.adjustmentField ? 'Paragraph text / Large' : '\u2014') + '</td></tr>' +
       '</tbody></table></div></div>' +
       '<div class="card"><h3>GL report</h3><div class="table-wrap"><table><tbody>' +
       '<tr><td>Definition key</td><td class="mono small">' + esc(State.glReportKey || 'Not loaded') + '</td></tr>' +
-      '<tr><td>Loaded range</td><td>' + (State.glRange ? esc(State.glRange.from + ' to ' + State.glRange.to) : 'ΓÇö') + '</td></tr>' +
+      '<tr><td>Loaded range</td><td>' + (State.glRange ? esc(State.glRange.from + ' to ' + State.glRange.to) : '\u2014') + '</td></tr>' +
       '<tr><td>Rows</td><td>' + (State.glModel && State.glModel.rows ? State.glModel.rows.length : 0) + '</td></tr>' +
       '</tbody></table></div><div class="actions" style="margin-top:12px"><button class="btn btn-outline" data-action="refresh-gl">Prepare / refresh</button></div></div>' +
       '</div>' +
@@ -1769,7 +1783,7 @@ tr:last-child td { border-bottom: 0; }
       '<div class="field"><label for="cfg-from">Default period from</label><input id="cfg-from" type="date" value="' + esc(config.defaultPeriodFrom || '') + '"></div>' +
       '<div class="field"><label for="cfg-to">Default period to</label><input id="cfg-to" type="date" value="' + esc(config.defaultPeriodTo || '') + '"></div>' +
       '</div>' +
-      '<div class="actions" style="margin-top:12px"><button class="btn btn-primary" data-action="save-config">Save configuration</button><span class="small muted">Creates an FBR-CONFIG Folder record. Existing adjustment records are not changed.</span></div></div>' +
+      '<div class="actions" style="margin-top:12px"><button class="btn btn-primary" data-action="save-config">Save FBR configuration</button><span class="small muted">Saves FBR-CONFIG folder (adjustments unchanged). Does not create GL report definitions.</span></div></div>' +
       '<div class="card" style="margin-top:14px"><h3>Placement status</h3><div class="table-wrap"><table><thead><tr><th>Type</th><th>FBR placement</th><th>Custom fields</th><th>Mode</th></tr></thead><tbody>' +
       placement.placed.map((type) => '<tr><td>' + esc(type.label) + '</td><td><span class="pill ok">Placed</span></td><td>Yes</td><td>Direct</td></tr>').join('') +
       placement.unplaced.map((type) => '<tr><td>' + esc(type.label) + '</td><td><span class="pill neutral">Not placed</span></td><td>' + (type.customFields ? 'Yes' : 'No') + '</td><td>Excluded</td></tr>').join('') +
@@ -1793,7 +1807,7 @@ tr:last-child td { border-bottom: 0; }
     const pl = accounts.filter((account) => account.type === 'PL');
     const bs = accounts.filter((account) => account.type === 'BS');
     function option(account) {
-      return '<option value="' + esc(account.key) + '"' + (String(selected || '').toLowerCase() === String(account.key).toLowerCase() ? ' selected' : '') + '>' + esc((account.code ? account.code + ' ┬╖ ' : '') + (account.name || account.nameWithCode || '')) + '</option>';
+      return '<option value="' + esc(account.key) + '"' + (String(selected || '').toLowerCase() === String(account.key).toLowerCase() ? ' selected' : '') + '>' + esc((account.code ? account.code + ' \u00B7 ' : '') + (account.name || account.nameWithCode || '')) + '</option>';
     }
     let html = '<option value="">Select account...</option>';
     if (!onlyBS && pl.length) html += '<optgroup label="Profit &amp; Loss">' + pl.map(option).join('') + '</optgroup>';
@@ -2099,7 +2113,7 @@ tr:last-child td { border-bottom: 0; }
       glReportKey: State.config && State.config.glReportKey,
       glRange: State.config && State.config.glRange
     });
-    confirmAction('Save FBR configuration?', 'This creates or updates an FBR-CONFIG Folder record. It does not change any adjustment or document.', 'Save configuration', 'confirm-save-config');
+    confirmAction('Save FBR configuration?', 'This saves or updates the FBR-CONFIG Folder record. It does not create GL definitions or change adjustments or documents.', 'Save configuration', 'confirm-save-config');
     State.pendingConfig = config;
   }
 
@@ -2117,9 +2131,11 @@ tr:last-child td { border-bottom: 0; }
   }
 
   window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) return;
     if (event.data && event.data.type === 'manager-context' && event.data.payload) {
       const origin = event.origin && event.origin !== 'null' ? event.origin : null;
-      if (managerOrigin && origin !== managerOrigin) return;
+      if (managerOrigin && origin && origin !== managerOrigin) return;
+      if (State.origin && origin && origin !== State.origin) return;
       managerOrigin = origin;
       State.origin = origin;
       State.context = event.data.payload;
@@ -2127,6 +2143,14 @@ tr:last-child td { border-bottom: 0; }
       if (!State.loaded && !State.loading) loadBaseData();
     }
   });
+
+  // Trigger initial load if context was received before IIFE completed (Task 7 fix)
+  if (window.__pendingInit && State.context && State.context.apiEndpoint) {
+    window.__pendingInit = false;
+    if (!State.loaded && !State.loading) loadBaseData();
+  } else if (!State.loaded && !State.loading) {
+    loadBaseData();
+  }
 
   document.addEventListener('click', (event) => {
     const tab = event.target.closest('[data-tab]');
@@ -2146,7 +2170,6 @@ tr:last-child td { border-bottom: 0; }
 
   document.addEventListener('change', (event) => {
     if (event.target && event.target.id === 'editor-type') {
-      State.editor.type = event.target.value;
       renderEditorLines();
     }
   });

@@ -1,0 +1,10 @@
+# GL Ledger Source Classification (verified from real form responses)
+sales-invoice: UNSUPPORTED (form has Lines with account/amount but no Debit/Credit pairing; revenue side only)
+purchase-invoice: UNSUPPORTED (same pattern)
+receipt: PARTIAL (has bank/cash account; may yield single-side only; exclude unless both sides verified)
+payment: PARTIAL (same)
+expense-claim: UNSUPPORTED (single-side line)
+inter-account-transfer: SUPPORTED if form has from/to accounts with amounts (verify per form)
+journal-entry: SUPPORTED (form has explicit Debit/Credit lines)
+credit-note / debit-note: UNSUPPORTED
+late-payment-fee: UNSUPPORTED (linked invoice only; no own GL pair)
