@@ -803,7 +803,7 @@ tr:last-child td { border-bottom: 0; }
       State.placement = E.placementStatus(State.fbrField, E.DOC_TYPES);
       const bd = firstItem(businessDetails);
       State.business = bd || null;
-      State.businessName = (bd && (bd.name || bd.Name)) || State.context.business || 'Manager business';
+      State.businessName = (bd && (bd.name || bd.Name)) || (State.context && State.context.business) || 'Manager business';
 
       setBusy(true, 'Reading chart of accounts', 'Accounts, groups and base currency');
       const [allAccounts, plGroups, bsGroups, customers, suppliers, employees, baseCurrency, folders] = await Promise.all([
