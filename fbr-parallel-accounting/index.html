@@ -385,6 +385,14 @@ tr:last-child td { border-bottom: 0; }
   window.State = State;
   window.__mainState = State; // Additional reference for inline script
 
+  // Consume context buffer if it was set by inline script before IIFE ran
+  if (window.__managerContextBuffer) {
+    State.context = window.__managerContextBuffer;
+    State.origin = window.__managerTargetOrigin || null;
+    if (State.origin) managerOrigin = State.origin;
+    window.__managerContextBuffer = null; // consume
+  }
+
   // Handle pending initialization if context was received before IIFE completed
   if (window.__pendingInit && State.context && State.context.apiEndpoint) {
     window.__pendingInit = false;
