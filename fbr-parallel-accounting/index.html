@@ -383,6 +383,7 @@ tr:last-child td { border-bottom: 0; }
 
   // Store State object globally for inline script to access
   window.State = State;
+  window.__mainState = State; // Additional reference for inline script
 
   // Handle pending initialization if context was received before IIFE completed
   if (window.__pendingInit && State.context && State.context.apiEndpoint) {
