@@ -303,6 +303,9 @@ tr:last-child td { border-bottom: 0; }
 <script>
 // Task 7 FIX: handshake buffer that actually initializes context
 (function(){
+  // Declare managerOrigin globally for use by inline script
+  window.managerOrigin = window.managerOrigin || null;
+  
   function initFromContext(payload, origin) {
     if (!payload) return;
     // Store in buffer for main IIFE to consume (it creates local State)
@@ -385,6 +388,17 @@ tr:last-child td { border-bottom: 0; }
   window.State = State;
   window.__mainState = State; // Additional reference for inline script
 
+  // Declare managerOrigin in this scope (use global if set by inline script)
+  let managerOrigin = window.managerOrigin || null;
+
+  // Consume context buffer if it was set by inline script before IIFE ran
+  if (window.__managerContextBuffer) {
+    State.context = window.__managerContextBuffer;
+    State.origin = window.__managerTargetOrigin || null;
+    if (State.origin) managerOrigin = State.origin;
+    window.__managerContextBuffer = null; // consume
+  }
+
   // Handle pending initialization if context was received before IIFE completed
   if (window.__pendingInit && State.context && State.context.apiEndpoint) {
     window.__pendingInit = false;
@@ -429,7 +443,11 @@ tr:last-child td { border-bottom: 0; }
   }
 
   function managerTargetOrigin() {
-    return managerOrigin || '*';
+    if (managerOrigin) return managerOrigin;
+    // For embedded mode, use ancestorOrigins or referrer
+    if (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) return window.location.ancestorOrigins[0];
+    if (document.referrer) try { return new URL(document.referrer).origin; } catch(e) {}
+    return '*';
   }
 
   function postMessageWithResponse(message, timeoutMs) {
@@ -455,8 +473,6 @@ tr:last-child td { border-bottom: 0; }
             managerOrigin = origin;
             State.origin = origin;
             setConnection('ok', 'Connected: Manager');
-            if (!State.context) State.context = { apiEndpoint: '', apiAccessToken: '' };
-            if (!State.loaded && !State.loading && !State.probing) loadBaseData();
           }
           resolve(event.data.body);
         }
@@ -729,22 +745,24 @@ tr:last-child td { border-bottom: 0; }
     State.error = null;
     State.warnings = [];
     setBusy(true, 'Reading FBR fields', 'Custom fields and placement');
-    // Safe diagnostic: identify exactly which embedded step is missing
     const hasParent = typeof window.parent !== 'undefined' && window.parent !== window;
-    const hasContext = !!(State.context && State.context.apiEndpoint);
-    if (!hasContext) {
-      const reasons = [];
-      if (!hasParent) reasons.push('no parent iframe (standalone page)');
-      if (!State.context) reasons.push('no State.context');
-      else if (!State.context.apiEndpoint) reasons.push('context missing apiEndpoint');
-      State.error = 'Embedded Manager.io context missing (' + reasons.join(', ') + '). Open via Manager.io > Extensions > FBR Parallel Accounting (test repo URL: https://github.com/tmrdata786-design/manager-io-extensions-fbr-test).';
+    const isEmbedded = hasParent;
+    // Manager.io runs extensions in an iframe and handles authentication internally.
+    // No manager-context message is sent. Use the bridge (postMessageWithResponse).
+    if (!isEmbedded) {
+      // Standalone mode: no parent iframe, show diagnostic
+      State.error = 'This extension must be opened from within Manager.io. Open Manager.io → Extensions and launch the configured FBR test extension.';
       State.loading = false;
       setBusy(false);
-      setConnection('warn', 'Not embedded: ' + reasons.join('; '));
+      setConnection('warn', 'Not embedded');
       toast(State.error, 'warn');
       renderWelcome();
       return;
     }
+    // Embedded mode: proceed using the postMessage bridge (Manager.io injects business context)
+    State.origin = State.origin || (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) || (document.referrer ? new URL(document.referrer).origin : null);
+    if (State.origin) managerOrigin = State.origin;
+    setConnection('ok', 'Connected: Manager');
     try {
       const [checkboxFields, textFields, businessDetails] = await Promise.all([
         fetchWithFallback(['/api2/checkbox-custom-fields', '/api2/checkbox-custom-field-batch'], false),
@@ -785,7 +803,7 @@ tr:last-child td { border-bottom: 0; }
       State.placement = E.placementStatus(State.fbrField, E.DOC_TYPES);
       const bd = firstItem(businessDetails);
       State.business = bd || null;
-      State.businessName = (bd && (bd.name || bd.Name)) || State.context.business || 'Manager business';
+      State.businessName = (bd && (bd.name || bd.Name)) || (State.context && State.context.business) || 'Manager business';
 
       setBusy(true, 'Reading chart of accounts', 'Accounts, groups and base currency');
       const [allAccounts, plGroups, bsGroups, customers, suppliers, employees, baseCurrency, folders] = await Promise.all([
@@ -2137,31 +2155,21 @@ tr:last-child td { border-bottom: 0; }
 
   window.addEventListener('message', (event) => {
     if (event.source !== window.parent) return;
-    if (event.data && event.data.type === 'manager-context' && event.data.payload) {
-      const origin = event.origin && event.origin !== 'null' ? event.origin : null;
-      if (managerOrigin && origin && origin !== managerOrigin) return;
-      if (State.origin && origin && origin !== State.origin) return;
-      managerOrigin = origin;
-      State.origin = origin;
-      State.context = event.data.payload;
-      setConnection('ok', 'Connected: Manager');
-      if (!State.loaded && !State.loading) loadBaseData();
-    }
+    // Manager.io does NOT send manager-context messages.
+    // Instead, it responds to api-request messages with api-response messages.
+    // The message handler for api-response is registered per-request in postMessageWithResponse.
+    // This handler is kept for backward compatibility but is not the primary initialization path.
   });
 
-  // Do NOT auto-call loadBaseData here. In embedded mode, the main handler
-  // will call it when manager-context arrives. In standalone mode, we set a
-  // timeout to show the diagnostic if no context arrives within 3 seconds.
+  // Embedded mode: auto-run loadBaseData when parent iframe exists
+  // Manager.io handles authentication internally via the postMessage bridge.
+  // No manager-context message is needed.
   if (!State.loaded && !State.loading) {
     const hasParent = window.parent !== window;
     if (hasParent) {
-      // Embedded: wait for manager-context message (main handler will call loadBaseData)
-      // Fallback timeout in case message is lost or host doesn't send it
-      window.__initTimeout = setTimeout(() => {
-        if (!State.loaded && !State.loading && !State.context) {
-          loadBaseData(); // will show diagnostic
-        }
-      }, 3000);
+      // Embedded: run loadBaseData immediately using the bridge
+      setConnection('ok', 'Connected: Manager');
+      loadBaseData();
     } else {
       // Standalone: run diagnostic immediately
       loadBaseData();
