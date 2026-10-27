@@ -305,8 +305,9 @@ tr:last-child td { border-bottom: 0; }
 (function(){
   function initFromContext(payload, origin) {
     if (!payload) return;
-    window.State = window.State || {};
-    window.State.context = payload;
+    // Store in buffer for main IIFE to consume (it creates local State)
+    window.__managerContextBuffer = payload;
+    if (origin) window.__managerTargetOrigin = origin;
     // Trigger loadBaseData once State is fully defined (after IIFE)
     if (window.loadBaseData && window.State && !window.State.loaded && !window.State.loading) {
       window.loadBaseData();
@@ -2144,12 +2145,23 @@ tr:last-child td { border-bottom: 0; }
     }
   });
 
-  // Trigger initial load if context was received before IIFE completed (Task 7 fix)
-  if (window.__pendingInit && State.context && State.context.apiEndpoint) {
-    window.__pendingInit = false;
-    if (!State.loaded && !State.loading) loadBaseData();
-  } else if (!State.loaded && !State.loading) {
-    loadBaseData();
+  // Do NOT auto-call loadBaseData here. In embedded mode, the main handler
+  // will call it when manager-context arrives. In standalone mode, we set a
+  // timeout to show the diagnostic if no context arrives within 3 seconds.
+  if (!State.loaded && !State.loading) {
+    const hasParent = window.parent !== window;
+    if (hasParent) {
+      // Embedded: wait for manager-context message (main handler will call loadBaseData)
+      // Fallback timeout in case message is lost or host doesn't send it
+      window.__initTimeout = setTimeout(() => {
+        if (!State.loaded && !State.loading && !State.context) {
+          loadBaseData(); // will show diagnostic
+        }
+      }, 3000);
+    } else {
+      // Standalone: run diagnostic immediately
+      loadBaseData();
+    }
   }
 
   document.addEventListener('click', (event) => {
